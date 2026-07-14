@@ -1,11 +1,23 @@
 {
   "version": 1,
   "skills": {
+    "gentleman-bubbletea": {
+      "source": "gentleman-programming/engram",
+      "sourceType": "github",
+      "skillPath": "skills/gentleman-bubbletea/SKILL.md",
+      "computedHash": "58939d8547afcde7d2ca020c0ecf4dd6cd7c7b3577462cb12555976cee49c952"
+    },
     "grill-with-docs": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/grill-with-docs/SKILL.md",
       "computedHash": "e7ef25bbee50cda2eb7b3a8ef541db0a0396dad7d369f7d14fb610671dd1864b"
+    },
+    "tui-design": {
+      "source": "hyperb1iss/hyperskills",
+      "sourceType": "github",
+      "skillPath": "skills/tui-design/SKILL.md",
+      "computedHash": "92b969f3473842ee731e0c7a5c571e3b89e5dac7da81be5e635e1715b0084e6e"
     }
   }
 }
