@@ -14,3 +14,11 @@ Términos del dominio usados en el proyecto music-downloader.
 | **Post-processing** | Etapa posterior a la descarga del stream: conversión a MP3, embedding de metadata, thumbnail. yt-dlp + ffmpeg. |
 | **Bubble Tea** | Framework Elm-style para construir TUIs en Go. Modelo: `Model` → `Update` → `View`. |
 | **Bubbles** | Componentes reutilizables para Bubble Tea: input, list, spinner, progress bar, table, etc. |
+| **Screen** | Una de las 5 vistas principales de la TUI: Input, Resolving, Playlist, Downloading, Done. Cada screen tiene su propio handler de teclas y su propia vista. |
+| **Layout Paradigm** | Estrategia visual definida en el skill `tui-design`: Multi-Panel, Miller Columns, Widget Dashboard, etc. El MVP usa Focused Single-Panel. |
+| **Semantic Slot** | Color definido por función (ej: `colorSuccess`, `colorError`) en lugar de por valor hex. Permite cambiar temas sin modificar vistas. |
+| **Footer** | Barra inferior que muestra las teclas disponibles en la screen actual. Formato: `[key] acción`. |
+| **Help Overlay** | Superposición que se activa con `?` y muestra todos los shortcuts de la screen actual. |
+| **Status Bar** | (futuro) Línea de estado persistente que muestra información contextual. |
+| **L0/L1/L2** | Capas del modelo de interacción del skill `tui-design`: Universal, Vim motions, Actions. Determinan qué teclas se muestran y a quién están dirigidas. |
+| **AdaptiveColor** | Función de Lipgloss que elige color claro u oscuro según el tema del terminal. Usada para los semantic slots. |
