@@ -2,8 +2,9 @@
 package tui
 
 import (
-	"github.com/Juanstudy/music-downloader/internal/download"
-	"github.com/Juanstudy/music-downloader/internal/model"
+	"github.com/Juanstudy/music-downloader/internal/core/domain"
+	"github.com/Juanstudy/music-downloader/internal/core/ports"
+	"github.com/Juanstudy/music-downloader/internal/core/service"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,27 +29,35 @@ type Model struct {
 	Height     int
 	Ready      bool // true after first WindowSizeMsg
 
-	Queue     *model.Queue
-	Engine    download.Engine
-	OutputDir string
+	// Dependencies (injected)
+	orchestrator *service.Orchestrator
+	searcher     ports.Searcher
+	outputDir    string
 
 	// Input screen
-	Input textinput.Model
+	Input   textinput.Model
+	InputID int // incrementing ID to reset spinner on retry
 
 	// Resolving screen
-	ResolveErr string
+	resolveErr string
 	Spinner    spinner.Model
 
-	// Playlist screen
-	Cursor         int
-	PlaylistScroll int
-	Filter         string
-	ShowHelp       bool
+	// Track list (populated after resolve)
+	tracks   []domain.Media
+	cursor   int
+	scroll   int
+	showHelp bool
+	filter   string
 
-	// Downloading screen
-	ProgressMsg string
+	// Download progress
+	succeeded    int
+	failed       int
+	failedTracks []domain.Media
+	downloadIdx  int // index of track currently being downloaded
+	progressMsg  string
 
-	// Done screen state is read from Queue
+	// Output tracking
+	inputErr string
 
 	Err error // fatal error to display before quitting
 }
@@ -58,8 +67,8 @@ func (m Model) Init() tea.Cmd {
 	return textinput.Blink
 }
 
-// NewModel creates the initial application model.
-func NewModel(engine download.Engine, outputDir string) Model {
+// NewModel creates the initial application model with hexagonal wiring.
+func NewModel(orch *service.Orchestrator, searcher ports.Searcher, outputDir string) Model {
 	ti := textinput.New()
 	ti.Placeholder = "https://music.youtube.com/..."
 	ti.Focus()
@@ -71,14 +80,15 @@ func NewModel(engine download.Engine, outputDir string) Model {
 	s.Spinner = spinner.MiniDot
 
 	return Model{
-		Screen:     ScreenInput,
-		PrevScreen: ScreenInput,
-		Ready:      false,
-		Queue:      model.NewQueue(),
-		Engine:     engine,
-		OutputDir:  outputDir,
-		Input:      ti,
-		Spinner:    s,
-		Cursor:     0,
+		Screen:       ScreenInput,
+		PrevScreen:   ScreenInput,
+		Ready:        false,
+		orchestrator: orch,
+		searcher:     searcher,
+		outputDir:    outputDir,
+		Input:        ti,
+		Spinner:      s,
+		cursor:       0,
+		scroll:       0,
 	}
 }

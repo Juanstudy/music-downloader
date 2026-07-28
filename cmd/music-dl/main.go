@@ -7,12 +7,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 
-	"github.com/Juanstudy/music-downloader/internal/download"
+	"github.com/Juanstudy/music-downloader/internal/adapters/downloader"
+	"github.com/Juanstudy/music-downloader/internal/adapters/preflight"
+	"github.com/Juanstudy/music-downloader/internal/adapters/searcher"
+	"github.com/Juanstudy/music-downloader/internal/core/service"
 	"github.com/Juanstudy/music-downloader/internal/tui"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,9 +27,8 @@ func main() {
 	log.SetFlags(0)
 
 	// Pre-flight check: verify dependencies before starting the TUI.
-	// Per ADR-004: check pre-TUI, fail fast with a clear message.
-	engine := &download.YtDlpEngine{}
-	if err := engine.CheckInstalled(); err != nil {
+	checker := preflight.NewChecker("yt-dlp")
+	if err := checker.Check(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "✗ %v\n", err)
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "  music-dl requires yt-dlp and ffmpeg to be installed:")
@@ -36,11 +39,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Determine output directory (ADR-005: ~/Music/music-dl/ by default).
+	// Determine output directory (default: ~/Music/music-dl/).
 	outputDir := defaultOutputDir()
 
+	// Wire hexagonal dependencies.
+	searcherImpl := searcher.NewSearcher()
+	downloaderImpl := downloader.NewDownloader()
+	orch := service.NewOrchestrator(searcherImpl, downloaderImpl)
+
 	// Start the Bubble Tea TUI program.
-	m := tui.NewModel(engine, outputDir)
+	m := tui.NewModel(orch, searcherImpl, outputDir)
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		log.Fatalf("error running TUI: %v", err)
