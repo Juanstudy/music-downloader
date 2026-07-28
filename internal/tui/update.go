@@ -1,415 +1,426 @@
 package tui
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"strings"
+	"time"
 
-	"github.com/Juanstudy/music-downloader/internal/model"
+	"github.com/Juanstudy/music-downloader/internal/core/domain"
+	"github.com/Juanstudy/music-downloader/internal/core/ports"
+	"github.com/Juanstudy/music-downloader/internal/core/service"
+
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 // ---------------------------------------------------------------------------
-// Custom message types
+// Constants
 // ---------------------------------------------------------------------------
 
-type resolveDoneMsg struct {
-	Tracks []*model.Media
-	Err    error
-}
-
-type downloadDoneMsg struct {
-	TrackIdx int
-	Err      error
-}
+const downloadTimeout = 5 * time.Minute
 
 // ---------------------------------------------------------------------------
-// Commands (async tea.Cmd factories)
-// ---------------------------------------------------------------------------
-
-func resolveCmd(engine engineish, url string) tea.Cmd {
-	return func() tea.Msg {
-		tracks, err := engine.Resolve(url)
-		return resolveDoneMsg{Tracks: tracks, Err: err}
-	}
-}
-
-// engineish is a local constraint so we don't import download.Engine here.
-type engineish interface {
-	Resolve(url string) ([]*model.Media, error)
-}
-
-func downloadCmd(engine downloadish, track *model.Media, outputDir string) tea.Cmd {
-	return func() tea.Msg {
-		err := engine.Download(track, outputDir, nil)
-		return downloadDoneMsg{Err: err}
-	}
-}
-
-type downloadish interface {
-	Download(track *model.Media, outputDir string, progress chan<- string) error
-}
-
-// ---------------------------------------------------------------------------
-// Update — main Bubble Tea update loop
+// Tea Update entry point
 // ---------------------------------------------------------------------------
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Global messages — handled regardless of screen
 	switch msg := msg.(type) {
-
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
 		m.Height = msg.Height
-		if !m.Ready {
-			m.Ready = true
-		}
+		m.Ready = true
+		m.Input.Width = msg.Width - 10
 		return m, nil
 
 	case tea.KeyMsg:
-		// Global quit — Ctrl+C is handled by Bubble Tea automatically.
 		switch msg.String() {
-		case "ctrl+c":
-			return m, tea.Quit
-		}
-		return m.handleKeyMsg(msg)
-
-	case spinner.TickMsg:
-		var cmd tea.Cmd
-		m.Spinner, cmd = m.Spinner.Update(msg)
-		return m, cmd
-
-	case resolveDoneMsg:
-		return m.handleResolveDone(msg)
-
-	case downloadDoneMsg:
-		return m.handleDownloadDone(msg)
-	}
-
-	return m, nil
-}
-
-// handleKeyMsg routes key presses to the active screen.
-func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-
-	// Help overlay toggles from any screen
-	if key == "?" {
-		m.ShowHelp = !m.ShowHelp
-		if m.ShowHelp {
+		case "ctrl+c", "q":
+			if m.Screen == ScreenInput {
+				return m, tea.Quit
+			}
+		case "?":
+			m.showHelp = !m.showHelp
 			return m, nil
 		}
-	}
 
-	// If help overlay is showing, only Esc or ? dismisses it
-	if m.ShowHelp {
-		if key == "?" || key == "esc" {
-			m.ShowHelp = false
+	case spinner.TickMsg:
+		if m.Screen == ScreenResolving {
+			var cmd tea.Cmd
+			m.Spinner, cmd = m.Spinner.Update(msg)
+			return m, cmd
 		}
 		return m, nil
+
+	case resolveFinishedMsg:
+		return m.handleResolveDone(msg)
+
+	case trackDownloadedMsg:
+		return m.handleTrackDone(msg)
 	}
 
+	// Screen-specific routing
 	switch m.Screen {
 	case ScreenInput:
 		return m.handleInputKeys(msg)
-	case ScreenResolving:
-		// Only quit during resolving
-		if key == "q" || key == "ctrl+c" {
-			return m, tea.Quit
-		}
-		return m, nil
 	case ScreenPlaylist:
 		return m.handlePlaylistKeys(msg)
+	case ScreenResolving:
+		if km, ok := msg.(tea.KeyMsg); ok {
+			return m.handleResolvingKeys(km)
+		}
+		return m, nil
 	case ScreenDownloading:
-		return m.handleDownloadingKeys(msg)
+		if km, ok := msg.(tea.KeyMsg); ok {
+			return m.handleDownloadingKeys(km)
+		}
+		return m, nil
 	case ScreenDone:
-		return m.handleDoneKeys(msg)
+		if km, ok := msg.(tea.KeyMsg); ok {
+			return m.handleDoneKeys(km)
+		}
+		return m, nil
+	default:
+		return m, nil
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Input screen
+// ---------------------------------------------------------------------------
+
+func (m Model) handleInputKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyEnter:
+			url := strings.TrimSpace(m.Input.Value())
+			m.inputErr = ""
+			if url == "" {
+				m.inputErr = "Please enter a URL"
+				return m, nil
+			}
+			return m.startResolve(url)
+		case tea.KeyCtrlC:
+			return m, tea.Quit
+		}
 	}
 
+	// Default: let the input handle its own key events
+	var cmd tea.Cmd
+	m.Input, cmd = m.Input.Update(msg)
+	return m, cmd
+}
+
+func (m Model) startResolve(url string) (tea.Model, tea.Cmd) {
+	m.Screen = ScreenResolving
+	m.PrevScreen = ScreenInput
+	m.Input.Blur()
+	// Bump ID so spinner resets on re-resolve
+	m.InputID++
+	return m, resolveCmd(m.searcher, url)
+}
+
+// resolveCmd creates a tea.Cmd that runs URL resolution in a goroutine.
+func resolveCmd(s ports.Searcher, url string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := s.Search(context.Background(), url)
+		if err != nil {
+			return resolveFinishedMsg{tracks: result.Tracks, err: err}
+		}
+		return resolveFinishedMsg{tracks: result.Tracks, err: nil}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Resolving screen
+// ---------------------------------------------------------------------------
+
+func (m Model) handleResolvingKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q":
+		return m, tea.Quit
+	case "esc":
+		m.Screen = ScreenInput
+		m.PrevScreen = ScreenResolving
+		m.Input.Focus()
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m Model) handleResolveDone(msg resolveFinishedMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		// Partial results: we have tracks AND an error (mid-playlist failure)
+		if len(msg.tracks) > 0 {
+			m.tracks = msg.tracks
+			m.cursor = 0
+			m.scroll = 0
+			m.Screen = ScreenPlaylist
+			m.PrevScreen = ScreenResolving
+			m.resolveErr = fmt.Sprintf("warning: resolve completed with errors: %v", msg.err)
+			return m, nil
+		}
+		m.Screen = ScreenInput
+		m.PrevScreen = ScreenResolving
+		m.Input.Focus()
+		m.resolveErr = msg.err.Error()
+		return m, nil
+	}
+
+	if len(msg.tracks) == 0 {
+		m.Screen = ScreenInput
+		m.PrevScreen = ScreenResolving
+		m.Input.Focus()
+		m.resolveErr = "no tracks found"
+		return m, nil
+	}
+
+	m.tracks = msg.tracks
+	m.cursor = 0
+	m.scroll = 0
+	m.resolveErr = ""
+
+	// Single track: auto-select and start download
+	if len(m.tracks) == 1 {
+		m.tracks[0].Status = domain.StatusDone
+		m.Screen = ScreenDownloading
+		m.PrevScreen = ScreenResolving
+		return m.startDownload()
+	}
+
+	// Multiple tracks: show playlist for user selection
+	m.Screen = ScreenPlaylist
+	m.PrevScreen = ScreenResolving
 	return m, nil
 }
 
 // ---------------------------------------------------------------------------
-// Screen: Input
+// Playlist screen
 // ---------------------------------------------------------------------------
 
-func (m Model) handleInputKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-
-	switch key {
-	case "enter":
-		url := strings.TrimSpace(m.Input.Value())
-		if url == "" {
-			return m, nil
-		}
-		// Transition to resolving
-		m.Screen = ScreenResolving
-		m.ResolveErr = ""
-		m.Spinner = spinner.New()
-		m.Spinner.Style = spinnerStyle
-		m.Spinner.Spinner = spinner.MiniDot
-		return m, tea.Batch(m.Spinner.Tick, resolveCmd(m.Engine, url))
-
-	case "q", "esc":
-		return m, tea.Quit
-
-	default:
-		var cmd tea.Cmd
-		m.Input, cmd = m.Input.Update(msg)
-		return m, cmd
+func (m Model) filteredTracks() []domain.Media {
+	if m.filter == "" {
+		return m.tracks
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Screen: Playlist
-// ---------------------------------------------------------------------------
-
-func (m Model) handlePlaylistKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-	tracks := m.filteredTracks()
-
-	switch key {
-	case "j", "down":
-		if m.Cursor < len(tracks)-1 {
-			m.Cursor++
-		}
-		m.ensureCursorVisible()
-		return m, nil
-
-	case "k", "up":
-		if m.Cursor > 0 {
-			m.Cursor--
-		}
-		m.ensureCursorVisible()
-		return m, nil
-
-	case " ":
-		// Toggle selection of the track at cursor
-		if m.Cursor >= 0 && m.Cursor < len(tracks) {
-			// Find the actual index in the full queue
-			actualIdx := m.actualTrackIndex(tracks[m.Cursor])
-			if actualIdx >= 0 {
-				t := &m.Queue.Tracks[actualIdx]
-				if t.Status == model.StatusPending {
-					t.Status = model.StatusCompleted // temporarily mark selected
-				} else if t.Status == model.StatusCompleted {
-					t.Status = model.StatusPending
-				}
-				// Actually, let's use a simpler selection mechanism.
-				// We'll use a separate Selected field. But for MVP simplicity,
-				// we can repurpose StatusPending → deselected, StatusCompleted → selected.
-				// Actually this is confusing. Let me use Selected bool.
-			}
-		}
-		// --- simpler approach below ---
-		return m, nil
-
-	case "a":
-		m.selectAll()
-		return m, nil
-
-	case "n":
-		m.deselectAll()
-		return m, nil
-
-	case "enter":
-		// Download selected tracks
-		return m.startDownload()
-
-	case "esc":
-		m.Screen = ScreenInput
-		m.Cursor = 0
-		m.Input.SetValue("")
-		return m, nil
-
-	case "q":
-		return m, tea.Quit
-
-	case "/":
-		// Simple filter: just start typing filter mode
-		// For now, toggle a simple filter state
-		return m, nil
-
-	default:
-		return m, nil
-	}
-}
-
-// ensureCursorVisible adjusts scroll so cursor is on screen.
-func (m *Model) ensureCursorVisible() {
-	visible := m.Height - 6 // approximate visible rows
-	if visible < 3 {
-		visible = 3
-	}
-	if m.Cursor < m.PlaylistScroll {
-		m.PlaylistScroll = m.Cursor
-	}
-	if m.Cursor >= m.PlaylistScroll+visible {
-		m.PlaylistScroll = m.Cursor - visible + 1
-	}
-}
-
-// filteredTracks returns tracks matching the current filter.
-func (m Model) filteredTracks() []model.Media {
-	if m.Filter == "" {
-		return m.Queue.Tracks
-	}
-	lower := strings.ToLower(m.Filter)
-	var result []model.Media
-	for _, t := range m.Queue.Tracks {
+	lower := strings.ToLower(m.filter)
+	var filtered []domain.Media
+	for _, t := range m.tracks {
 		if strings.Contains(strings.ToLower(t.Title), lower) ||
 			strings.Contains(strings.ToLower(t.Artist), lower) {
-			result = append(result, t)
+			filtered = append(filtered, t)
 		}
 	}
-	return result
+	return filtered
 }
 
-// actualTrackIndex finds the real index of a track in the full queue.
-func (m Model) actualTrackIndex(target model.Media) int {
-	for i, t := range m.Queue.Tracks {
-		if t.URL == target.URL {
+func (m Model) findTrackIndex(track domain.Media) int {
+	for i, t := range m.tracks {
+		if t.URL == track.URL {
 			return i
 		}
 	}
 	return -1
 }
 
-// selectAll marks all pending tracks as selected.
-func (m *Model) selectAll() {
-	for i := range m.Queue.Tracks {
-		if m.Queue.Tracks[i].Status == model.StatusPending {
-			m.Queue.Tracks[i].Status = model.StatusCompleted
-		}
-	}
-}
+func (m Model) handlePlaylistKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		tracks := m.filteredTracks()
 
-// deselectAll marks selected tracks back to pending.
-func (m *Model) deselectAll() {
-	for i := range m.Queue.Tracks {
-		if m.Queue.Tracks[i].Status == model.StatusCompleted {
-			m.Queue.Tracks[i].Status = model.StatusPending
-		}
-	}
-}
-
-// startDownload begins downloading selected tracks.
-func (m Model) startDownload() (tea.Model, tea.Cmd) {
-	// Reset status: anything marked completed → pending for download
-	// Only download tracks that were selected (StatusCompleted means selected here)
-	selectedCount := 0
-	firstPending := -1
-	for i := range m.Queue.Tracks {
-		if m.Queue.Tracks[i].Status == model.StatusCompleted {
-			selectedCount++
-		}
-	}
-
-	// If none selected, select all
-	if selectedCount == 0 {
-		m.selectAll()
-	}
-
-	// Find first pending track
-	for i := range m.Queue.Tracks {
-		if m.Queue.Tracks[i].Status == model.StatusCompleted {
-			// Mark as pending for download
-			m.Queue.Tracks[i].Status = model.StatusPending
-			if firstPending < 0 {
-				firstPending = i
+		switch msg.String() {
+		case "j", "down":
+			if m.cursor < len(tracks)-1 {
+				m.cursor++
 			}
+			m.ensureVisible()
+			return m, nil
+
+		case "k", "up":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+			m.ensureVisible()
+			return m, nil
+
+		case " ":
+			if m.cursor >= 0 && m.cursor < len(tracks) {
+				idx := m.findTrackIndex(tracks[m.cursor])
+				if idx >= 0 {
+					if m.tracks[idx].Status == domain.StatusPending {
+						m.tracks[idx].Status = domain.StatusDone
+					} else {
+						m.tracks[idx].Status = domain.StatusPending
+					}
+				}
+			}
+			return m, nil
+
+		case "a":
+			for i := range m.tracks {
+				if m.tracks[i].Status == domain.StatusPending {
+					m.tracks[i].Status = domain.StatusDone
+				}
+			}
+			return m, nil
+
+		case "n":
+			for i := range m.tracks {
+				if m.tracks[i].Status == domain.StatusDone {
+					m.tracks[i].Status = domain.StatusPending
+				}
+			}
+			return m, nil
+
+		case "enter":
+			return m.startDownload()
+
+		case "esc":
+			m.Screen = ScreenInput
+			m.tracks = nil
+			m.cursor = 0
+			m.scroll = 0
+			m.Input.SetValue("")
+			return m, nil
+
+		case "q":
+			return m, tea.Quit
+
+		default:
+			return m, nil
 		}
 	}
+	return m, nil
+}
 
-	m.Screen = ScreenDownloading
-	m.Queue.Index = -1
-	m.ProgressMsg = ""
-
-	if !m.Queue.Next() {
-		// Nothing to download
-		m.Screen = ScreenDone
-		return m, nil
+func (m Model) ensureVisible() {
+	visible := m.Height - 8
+	if visible < 3 {
+		visible = 3
 	}
-
-	cur := m.Queue.Current()
-	return m, downloadCmd(m.Engine, cur, m.OutputDir)
+	if m.cursor < m.scroll {
+		m.scroll = m.cursor
+	}
+	if m.cursor >= m.scroll+visible {
+		m.scroll = m.cursor - visible + 1
+	}
 }
 
 // ---------------------------------------------------------------------------
-// Screen: Downloading
+// Download flow
+// ---------------------------------------------------------------------------
+
+func (m Model) startDownload() (tea.Model, tea.Cmd) {
+	// Count selected tracks
+	var selected []int
+	for i, t := range m.tracks {
+		if t.Status == domain.StatusDone || t.Status == domain.StatusResolved {
+			selected = append(selected, i)
+		}
+	}
+	if len(selected) == 0 {
+		// Nothing selected, nothing to download
+		return m, nil
+	}
+
+	// Mark first selected track as downloading
+	firstIdx := selected[0]
+	if m.tracks[firstIdx].Status != domain.StatusResolved {
+		m.tracks[firstIdx].Status = domain.StatusResolved
+	}
+	m.downloadIdx = firstIdx
+	m.tracks[firstIdx].Status = domain.StatusDownloading
+	m.succeeded = 0
+	m.failed = 0
+	m.failedTracks = nil
+	m.Screen = ScreenDownloading
+	m.PrevScreen = ScreenPlaylist
+
+	return m, downloadTrackCmd(m.orchestrator, m.tracks[firstIdx], m.outputDir, firstIdx)
+}
+
+func downloadTrackCmd(o *service.Orchestrator, media domain.Media, outputDir string, idx int) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
+		defer cancel()
+		updated, err := o.DownloadTrack(ctx, media, outputDir)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				err = fmt.Errorf("download timed out after 5m: check your connection")
+			}
+		}
+		return trackDownloadedMsg{index: idx, media: updated, err: err}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Downloading screen
 // ---------------------------------------------------------------------------
 
 func (m Model) handleDownloadingKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "q", "ctrl+c":
+	case "q":
 		return m, tea.Quit
-	case "esc":
-		// Allow going back to playlist (keep downloads running in background)
-		// For MVP: just stay on this screen
-		return m, nil
 	}
 	return m, nil
 }
 
+func (m Model) handleTrackDone(msg trackDownloadedMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.tracks[msg.index].Status = domain.StatusFailed
+		m.tracks[msg.index].Error = msg.err.Error()
+		m.failed++
+		m.failedTracks = append(m.failedTracks, m.tracks[msg.index])
+	} else {
+		m.tracks[msg.index].Status = domain.StatusDone
+		m.tracks[msg.index].OutputPath = msg.media.OutputPath
+		m.succeeded++
+	}
+
+	// Find next track in StatusResolved
+	nextIdx := -1
+	for i, t := range m.tracks {
+		if t.Status == domain.StatusResolved {
+			nextIdx = i
+			break
+		}
+	}
+
+	if nextIdx >= 0 {
+		// Start next download
+		m.downloadIdx = nextIdx
+		m.tracks[nextIdx].Status = domain.StatusDownloading
+		return m, downloadTrackCmd(m.orchestrator, m.tracks[nextIdx], m.outputDir, nextIdx)
+	}
+
+	// All selected tracks processed
+	m.Screen = ScreenDone
+	m.PrevScreen = ScreenDownloading
+	return m, nil
+}
+
 // ---------------------------------------------------------------------------
-// Screen: Done
+// Done screen
 // ---------------------------------------------------------------------------
 
 func (m Model) handleDoneKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "enter":
-		// Start a new download session
+	case "q", "esc":
+		return m, tea.Quit
+	case "r":
+		// Reset to input screen for another URL
 		m.Screen = ScreenInput
-		m.Queue = model.NewQueue()
-		m.Cursor = 0
+		m.tracks = nil
+		m.cursor = 0
+		m.scroll = 0
+		m.succeeded = 0
+		m.failed = 0
+		m.failedTracks = nil
 		m.Input.SetValue("")
 		m.Input.Focus()
 		return m, nil
-	case "q", "esc", "ctrl+c":
-		return m, tea.Quit
 	}
-	return m, nil
-}
-
-// ---------------------------------------------------------------------------
-// Async message handlers
-// ---------------------------------------------------------------------------
-
-func (m Model) handleResolveDone(msg resolveDoneMsg) (tea.Model, tea.Cmd) {
-	if msg.Err != nil {
-		m.ResolveErr = msg.Err.Error()
-		m.Screen = ScreenInput
-		return m, nil
-	}
-
-	m.Queue = model.NewQueue()
-	for _, t := range msg.Tracks {
-		m.Queue.Add(*t)
-	}
-
-	// If only one track, skip playlist and go directly to downloading
-	if len(msg.Tracks) == 1 {
-		m.Queue.Tracks[0].Status = model.StatusCompleted // mark as selected
-		return m.startDownload()
-	}
-
-	m.Screen = ScreenPlaylist
-	m.Cursor = 0
-	m.PlaylistScroll = 0
-	return m, nil
-}
-
-func (m Model) handleDownloadDone(msg downloadDoneMsg) (tea.Model, tea.Cmd) {
-	if msg.Err != nil {
-		m.Queue.MarkCurrentFailed(msg.Err.Error())
-	} else {
-		m.Queue.MarkCurrentCompleted()
-	}
-
-	if m.Queue.Next() {
-		cur := m.Queue.Current()
-		return m, downloadCmd(m.Engine, cur, m.OutputDir)
-	}
-
-	// All done
-	m.Screen = ScreenDone
 	return m, nil
 }

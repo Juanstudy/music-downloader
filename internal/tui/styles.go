@@ -1,22 +1,15 @@
 package tui
 
 import (
-	"github.com/Juanstudy/music-downloader/internal/model"
+	"github.com/Juanstudy/music-downloader/internal/core/domain"
 	"github.com/charmbracelet/lipgloss"
 )
 
 // ---------------------------------------------------------------------------
-// Semantic color slots (from tui-design skill §4)
-//
-// Strategy: start with ANSI 16 as foundation (works on any terminal).
-// Next layer: adaptive colors that respond to light/dark themes.
-// Future layer: true color hex values.
-//
-// Using lipgloss.AdaptiveColor so light and dark terminal themes both work.
+// Semantic color slots
 // ---------------------------------------------------------------------------
 
 var (
-	// Colors — semantic slots
 	colorDefault   = lipgloss.AdaptiveColor{Light: "#1a1a1a", Dark: "#c0caf5"}
 	colorMuted     = lipgloss.AdaptiveColor{Light: "#888888", Dark: "#565f89"}
 	colorEmphasis  = lipgloss.AdaptiveColor{Light: "#000000", Dark: "#e0e0e0"}
@@ -35,17 +28,14 @@ var (
 // ---------------------------------------------------------------------------
 
 var (
-	// App container — full viewport
 	appStyle = lipgloss.NewStyle().
 			Padding(1, 2)
 
-	// Title bar
 	titleStyle = lipgloss.NewStyle().
 			Foreground(colorEmphasis).
 			Bold(true).
 			MarginBottom(1)
 
-	// Footer bar
 	footerStyle = lipgloss.NewStyle().
 			Foreground(colorMuted).
 			MarginTop(1).
@@ -53,69 +43,60 @@ var (
 			BorderStyle(lipgloss.NormalBorder()).
 			BorderForeground(colorSurface)
 
-	// Key hint in footer — e.g. "[q]uit"
 	keyStyle = lipgloss.NewStyle().
 			Foreground(colorAccent).
 			Bold(true)
 
-	// Label for key descriptions in footer
 	keyDescStyle = lipgloss.NewStyle().
 			Foreground(colorMuted)
 
-	// Active input field
 	inputStyle = lipgloss.NewStyle().
 			BorderForeground(colorAccent).
 			BorderStyle(lipgloss.RoundedBorder()).
 			Padding(0, 1)
 
-	// Normal text
 	textStyle = lipgloss.NewStyle().
 			Foreground(colorDefault)
 
-	// Emphasised text (headers, active items)
 	emphStyle = lipgloss.NewStyle().
 			Foreground(colorEmphasis).
 			Bold(true)
 
-	// Muted text (metadata, timestamps, counters)
 	mutedStyle = lipgloss.NewStyle().
 			Foreground(colorMuted)
 
-	// Selected row highlight
 	selectedStyle = lipgloss.NewStyle().
 			Foreground(colorEmphasis).
 			Background(colorSelection).
 			Padding(0, 1)
 
-	// Status indicators
 	successStyle = lipgloss.NewStyle().
 			Foreground(colorSuccess).
 			Bold(true)
+
 	errorStyle = lipgloss.NewStyle().
 			Foreground(colorError).
 			Bold(true)
+
 	warningStyle = lipgloss.NewStyle().
 			Foreground(colorWarning)
+
 	infoStyle = lipgloss.NewStyle().
 			Foreground(colorInfo)
 
-	// Divider line
 	dividerStyle = lipgloss.NewStyle().
 			Foreground(colorSurface).
 			Padding(0, 1)
 
-	// Help overlay box
 	helpStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorAccent).
 			Padding(1, 2).
 			Background(colorSurface)
 
-	// Dialog/overlay background dim
 	dialogBgStyle = lipgloss.NewStyle().
 			Background(colorBase)
 
-	// Spinner style (color applied to the spinner text)
 	spinnerStyle = lipgloss.NewStyle().
 			Foreground(colorInfo).
 			Bold(true)
@@ -125,30 +106,34 @@ var (
 // Helper: render a status indicator character
 // ---------------------------------------------------------------------------
 
-func statusChar(status model.Status) string {
+func statusChar(status domain.Status) string {
 	switch status {
-	case model.StatusCompleted:
+	case domain.StatusDone:
 		return successStyle.Render("✓")
-	case model.StatusFailed:
+	case domain.StatusFailed:
 		return errorStyle.Render("✗")
-	case model.StatusDownloading:
+	case domain.StatusDownloading:
 		return emphStyle.Render("█")
-	case model.StatusPending:
+	case domain.StatusResolved:
+		return infoStyle.Render("▸")
+	case domain.StatusPending:
 		return mutedStyle.Render(" ")
 	default:
 		return " "
 	}
 }
 
-func statusLabel(status model.Status) string {
+func statusLabel(status domain.Status) string {
 	switch status {
-	case model.StatusCompleted:
+	case domain.StatusDone:
 		return successStyle.Render("✓ downloaded")
-	case model.StatusFailed:
+	case domain.StatusFailed:
 		return errorStyle.Render("✗ failed")
-	case model.StatusDownloading:
+	case domain.StatusDownloading:
 		return emphStyle.Render("▸ downloading")
-	case model.StatusPending:
+	case domain.StatusResolved:
+		return infoStyle.Render("▸ queued")
+	case domain.StatusPending:
 		return mutedStyle.Render("  pending")
 	default:
 		return ""
