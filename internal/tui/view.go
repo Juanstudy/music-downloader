@@ -75,6 +75,7 @@ func (m Model) renderFooter() string {
 			keyStyle.Render("Space")+" "+keyDescStyle.Render("toggle"),
 			keyStyle.Render("a")+" "+keyDescStyle.Render("all"),
 			keyStyle.Render("n")+" "+keyDescStyle.Render("none"),
+			keyStyle.Render("/")+" "+keyDescStyle.Render("filter"),
 			keyStyle.Render("Enter")+" "+keyDescStyle.Render("download"),
 			keyStyle.Render("Esc")+" "+keyDescStyle.Render("back"),
 		)
@@ -86,25 +87,6 @@ func (m Model) renderFooter() string {
 		)
 	}
 	return footerStyle.Render(strings.Join(keys, "  │  "))
-}
-
-func (m Model) renderHelpOverlay() string {
-	lines := []string{
-		"  Keybindings:",
-		"    ↑/k  ↓/j   Navigate",
-		"    Enter        Confirm / start download",
-		"    Space        Toggle track selection",
-		"    a            Select all tracks",
-		"    n            Deselect all tracks",
-		"    Esc          Go back",
-		"    q            Quit",
-		"    ?            Toggle this help",
-		"",
-		"  Tips:",
-		"    Downloads run sequentially, one track at a time.",
-		"    Press 'r' on the Done screen to start a new URL.",
-	}
-	return helpStyle.Render(strings.Join(lines, "\n"))
 }
 
 // ---------------------------------------------------------------------------
@@ -166,11 +148,23 @@ func (m Model) renderPlaylistView() string {
 		b.WriteString("\n")
 	}
 
-	// Show counter
-	b.WriteString(fmt.Sprintf("\n%s\n\n",
-		mutedStyle.Render(fmt.Sprintf("%d tracks — select with Space, then Enter to download", len(m.tracks)))))
+	// Show filter bar when active
+	if m.isFiltering {
+		b.WriteString("\n")
+		b.WriteString(emphStyle.Render("  Filter "))
+		b.WriteString(inputStyle.Render(m.filterInput.View()))
+		b.WriteString("\n")
+	}
 
+	// Show counter
 	tracks := m.filteredTracks()
+	filteredCount := ""
+	if m.filter != "" {
+		filteredCount = mutedStyle.Render(fmt.Sprintf("  (%d/%d)", len(tracks), len(m.tracks)))
+	}
+	b.WriteString(fmt.Sprintf("\n%s%s\n\n",
+		mutedStyle.Render(fmt.Sprintf("%d tracks — select with Space, then Enter to download", len(m.tracks))),
+		filteredCount))
 	start := m.scroll
 	end := start + (m.Height - 10)
 	if end > len(tracks) {

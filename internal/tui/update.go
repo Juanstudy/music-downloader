@@ -12,6 +12,7 @@ import (
 	"github.com/Juanstudy/music-downloader/internal/core/service"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -226,6 +227,11 @@ func (m Model) findTrackIndex(track domain.Media) int {
 }
 
 func (m Model) handlePlaylistKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Filter mode active: route keys to the filter input
+	if m.isFiltering {
+		return m.handlePlaylistFilterInput(msg)
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		tracks := m.filteredTracks()
@@ -274,6 +280,13 @@ func (m Model) handlePlaylistKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "/":
+			// Enter filter mode
+			m.isFiltering = true
+			m.filterInput.Focus()
+			m.filterInput.SetValue(m.filter)
+			return m, textinput.Blink
+
 		case "enter":
 			return m.startDownload()
 
@@ -282,6 +295,8 @@ func (m Model) handlePlaylistKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tracks = nil
 			m.cursor = 0
 			m.scroll = 0
+			m.filter = ""
+			m.resolveErr = ""
 			m.Input.SetValue("")
 			return m, nil
 
@@ -293,6 +308,53 @@ func (m Model) handlePlaylistKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// handlePlaylistFilterInput routes key events to the filter text input
+// when the user is actively typing a filter.
+func (m Model) handlePlaylistFilterInput(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc":
+			// Exit filter mode and clear filter
+			m.isFiltering = false
+			m.filter = ""
+			m.filterInput.SetValue("")
+			m.filterInput.Blur()
+			return m, nil
+
+		case "enter":
+			// Apply filter and exit filter mode
+			m.filter = m.filterInput.Value()
+			m.isFiltering = false
+			m.filterInput.Blur()
+			// Clamp cursor to the new filtered list
+			tracks := m.filteredTracks()
+			if m.cursor >= len(tracks) {
+				m.cursor = len(tracks) - 1
+			}
+			if m.cursor < 0 {
+				m.cursor = 0
+			}
+			return m, nil
+		}
+	}
+
+	// Route to the filter input widget
+	var cmd tea.Cmd
+	m.filterInput, cmd = m.filterInput.Update(msg)
+	// Update filter text in real-time so filteredTracks() stays in sync
+	m.filter = m.filterInput.Value()
+	tracks := m.filteredTracks()
+	if m.cursor >= len(tracks) {
+		m.cursor = len(tracks) - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+	m.ensureVisible()
+	return m, cmd
 }
 
 func (m Model) ensureVisible() {
@@ -418,6 +480,7 @@ func (m Model) handleDoneKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.succeeded = 0
 		m.failed = 0
 		m.failedTracks = nil
+		m.resolveErr = ""
 		m.Input.SetValue("")
 		m.Input.Focus()
 		return m, nil

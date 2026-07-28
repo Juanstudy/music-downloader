@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Juanstudy/music-downloader/internal/core/domain"
@@ -600,5 +601,124 @@ func TestDoneReset(t *testing.T) {
 	}
 	if updated.tracks != nil {
 		t.Error("expected tracks to be nil after reset")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Edge cases (4R review)
+// ---------------------------------------------------------------------------
+
+func TestResolveEmptyResult(t *testing.T) {
+	m := Model{Screen: ScreenResolving, Ready: true, Input: newInput()}
+
+	msg := resolveFinishedMsg{
+		tracks: nil,
+		err:    nil,
+	}
+
+	m2, _ := m.Update(msg)
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenInput {
+		t.Errorf("expected ScreenInput for empty result, got %d", updated.Screen)
+	}
+	if updated.resolveErr == "" {
+		t.Error("expected resolveErr for empty result")
+	}
+}
+
+func TestAllTracksFailDuringDownload(t *testing.T) {
+	m := Model{Screen: ScreenDownloading, Ready: true, tracks: sampleTracks(), Input: newInput()}
+	m.tracks[0].Status = domain.StatusDownloading
+	m.tracks[1].Status = domain.StatusResolved
+	m.tracks[2].Status = domain.StatusResolved
+	m.downloadIdx = 0
+
+	errMsg := "disk full"
+
+	// Track 0 fails
+	msg1 := trackDownloadedMsg{index: 0, media: domain.Media{}, err: errors.New(errMsg)}
+	m2, cmd := m.Update(msg1)
+	updated := m2.(Model)
+
+	if updated.failed != 1 {
+		t.Errorf("expected failed=1, got %d", updated.failed)
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd to continue chain")
+	}
+
+	// Track 1 fails
+	msg2 := trackDownloadedMsg{index: 1, media: domain.Media{}, err: errors.New(errMsg)}
+	m3, cmd2 := updated.Update(msg2)
+	updated2 := m3.(Model)
+
+	if updated2.failed != 2 {
+		t.Errorf("expected failed=2, got %d", updated2.failed)
+	}
+	if cmd2 == nil {
+		t.Fatal("expected non-nil cmd to continue chain")
+	}
+
+	// Track 2 fails — end of chain
+	msg3 := trackDownloadedMsg{index: 2, media: domain.Media{}, err: errors.New(errMsg)}
+	m4, cmd3 := m3.Update(msg3)
+	updated3 := m4.(Model)
+
+	if cmd3 != nil {
+		t.Error("expected nil cmd — all tracks processed")
+	}
+	if updated3.Screen != ScreenDone {
+		t.Errorf("expected ScreenDone after all failed, got %d", updated3.Screen)
+	}
+	if updated3.failed != 3 {
+		t.Errorf("expected failed=3, got %d", updated3.failed)
+	}
+}
+
+func TestNoTracksSelectedForDownload(t *testing.T) {
+	m := modelWithTracks(t)
+	// All tracks stay as StatusPending (not selected)
+
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenPlaylist {
+		t.Errorf("expected stay on ScreenPlaylist when nothing selected, got %d", updated.Screen)
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd when nothing selected")
+	}
+}
+
+func TestInputWhitespaceURL(t *testing.T) {
+	m := Model{Screen: ScreenInput, Ready: true, Input: newInput()}
+	m.Input.SetValue("   ")
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenInput {
+		t.Errorf("expected ScreenInput for whitespace URL, got %d", updated.Screen)
+	}
+	if updated.inputErr == "" {
+		t.Error("expected inputErr for whitespace URL")
+	}
+}
+
+func TestInputVeryLongURL(t *testing.T) {
+	m := Model{Screen: ScreenInput, Ready: true, Input: newInput()}
+	url := "https://youtube.com/" + strings.Repeat("a", 500)
+	m.Input.SetValue(url)
+
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	// Should transition to resolving, not truncate or error
+	if updated.Screen != ScreenResolving {
+		t.Errorf("expected ScreenResolving for long URL, got %d", updated.Screen)
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd for resolve")
 	}
 }

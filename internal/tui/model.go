@@ -43,11 +43,13 @@ type Model struct {
 	Spinner    spinner.Model
 
 	// Track list (populated after resolve)
-	tracks   []domain.Media
-	cursor   int
-	scroll   int
-	showHelp bool
-	filter   string
+	tracks      []domain.Media
+	cursor      int
+	scroll      int
+	showHelp    bool
+	filter      string
+	filterInput textinput.Model
+	isFiltering bool
 
 	// Download progress
 	succeeded    int
@@ -79,6 +81,11 @@ func NewModel(orch *service.Orchestrator, searcher ports.Searcher, outputDir str
 	s.Style = spinnerStyle
 	s.Spinner = spinner.MiniDot
 
+	fi := textinput.New()
+	fi.Placeholder = "Filter by title or artist..."
+	fi.CharLimit = 60
+	fi.Width = 40
+
 	return Model{
 		Screen:       ScreenInput,
 		PrevScreen:   ScreenInput,
@@ -88,6 +95,7 @@ func NewModel(orch *service.Orchestrator, searcher ports.Searcher, outputDir str
 		outputDir:    outputDir,
 		Input:        ti,
 		Spinner:      s,
+		filterInput:  fi,
 		cursor:       0,
 		scroll:       0,
 	}
