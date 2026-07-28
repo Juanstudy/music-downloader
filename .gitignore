@@ -35,3 +35,6 @@ Thumbs.db
 # Local
 .env
 .env.local
+# Local Pi runtime state
+.atl/
+music-dl
