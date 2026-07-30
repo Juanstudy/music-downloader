@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Juanstudy/music-downloader/internal/model"
+	"github.com/Juanstudy/music-downloader/internal/core/domain"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -14,7 +15,6 @@ func (m Model) View() string {
 		return "Loading..."
 	}
 
-	// Fatal error overrides everything
 	if m.Err != nil {
 		return m.renderFatalError()
 	}
@@ -34,12 +34,10 @@ func (m Model) View() string {
 		content = m.renderDoneView()
 	}
 
-	// Wrap in app container
 	body := appStyle.Render(content)
 
-	// If help overlay is active, layer it on top
-	if m.ShowHelp {
-		help := m.renderHelpOverlay()
+	if m.showHelp {
+		help := helpView(m.Width)
 		body = lipgloss.JoinVertical(lipgloss.Top, body, "\n", help)
 	}
 
@@ -47,335 +45,268 @@ func (m Model) View() string {
 }
 
 // ---------------------------------------------------------------------------
-// Fatal error screen
+// Shared UI helpers
 // ---------------------------------------------------------------------------
 
 func (m Model) renderFatalError() string {
-	return errorStyle.Render(fmt.Sprintf("Error: %v", m.Err))
+	return errorStyle.Render(fmt.Sprintf("Fatal error: %v", m.Err))
+}
+
+func (m Model) renderHeader(title string) string {
+	return titleStyle.Render(title)
+}
+
+func (m Model) renderFooter() string {
+	keys := []string{}
+	if m.Screen == ScreenInput {
+		keys = append(keys, keyStyle.Render("Enter")+" "+keyDescStyle.Render("resolve"))
+	}
+	if m.Screen == ScreenPlaylist || m.Screen == ScreenDownloading || m.Screen == ScreenDone {
+		keys = append(keys, keyStyle.Render("q")+" "+keyDescStyle.Render("quit"))
+	}
+	if m.Screen == ScreenDownloading {
+		keys = append(keys, keyStyle.Render("q")+" "+keyDescStyle.Render("quit (downloads continue)"))
+	}
+	if m.Screen == ScreenInput || m.Screen == ScreenPlaylist {
+		keys = append(keys, keyStyle.Render("?")+" "+keyDescStyle.Render("help"))
+	}
+	if m.Screen == ScreenPlaylist {
+		keys = append(keys,
+			keyStyle.Render("Space")+" "+keyDescStyle.Render("toggle"),
+			keyStyle.Render("a")+" "+keyDescStyle.Render("all"),
+			keyStyle.Render("n")+" "+keyDescStyle.Render("none"),
+			keyStyle.Render("/")+" "+keyDescStyle.Render("filter"),
+			keyStyle.Render("Enter")+" "+keyDescStyle.Render("download"),
+			keyStyle.Render("Esc")+" "+keyDescStyle.Render("back"),
+		)
+	}
+	if m.Screen == ScreenDone {
+		keys = append(keys,
+			keyStyle.Render("r")+" "+keyDescStyle.Render("new URL"),
+			keyStyle.Render("Esc")+" "+keyDescStyle.Render("quit"),
+		)
+	}
+	return footerStyle.Render(strings.Join(keys, "  │  "))
 }
 
 // ---------------------------------------------------------------------------
-// Screen: Input
+// Input screen
 // ---------------------------------------------------------------------------
 
 func (m Model) renderInputView() string {
 	var b strings.Builder
 
-	// Title
-	b.WriteString(titleStyle.Render("♪ music-dl"))
+	b.WriteString(m.renderHeader("♪ music-dl"))
 	b.WriteString("\n\n")
+	b.WriteString("Paste a YouTube or YouTube Music URL:\n\n")
+	b.WriteString(inputStyle.Render(m.Input.View()))
+	b.WriteString("\n")
 
-	// Error message from previous resolve attempt
-	if m.ResolveErr != "" {
-		b.WriteString(errorStyle.Render("✗ " + m.ResolveErr))
-		b.WriteString("\n\n")
+	if m.resolveErr != "" {
+		b.WriteString("\n")
+		b.WriteString(errorStyle.Render("✗ " + m.resolveErr))
+		b.WriteString("\n")
 	}
 
-	// Input field
-	b.WriteString(textStyle.Render("Enter URL:"))
 	b.WriteString("\n")
-	b.WriteString(inputStyle.Render(m.Input.View()))
-	b.WriteString("\n\n")
-
-	// Footer hints
-	b.WriteString(m.renderFooter("enter", "resolve", "q", "quit"))
+	b.WriteString(m.renderFooter())
 
 	return b.String()
 }
 
 // ---------------------------------------------------------------------------
-// Screen: Resolving
+// Resolving screen
 // ---------------------------------------------------------------------------
 
 func (m Model) renderResolvingView() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("♪ music-dl"))
+	b.WriteString(m.renderHeader("♪ music-dl"))
 	b.WriteString("\n\n")
-
-	// Spinner + message centered-ish
-	spin := infoStyle.Render(m.Spinner.View())
-	b.WriteString(fmt.Sprintf("\n  %s %s\n\n", spin, textStyle.Render("Resolving URL...")))
-	b.WriteString(mutedStyle.Render("  This should only take a moment"))
+	b.WriteString(m.Spinner.View())
+	b.WriteString(" Resolving URL...\n\n")
+	b.WriteString(mutedStyle.Render(m.Input.Value()))
 	b.WriteString("\n\n")
-
-	// Footer
-	b.WriteString(m.renderFooter("q", "cancel"))
+	b.WriteString(m.renderFooter())
 
 	return b.String()
 }
 
 // ---------------------------------------------------------------------------
-// Screen: Playlist
+// Playlist screen
 // ---------------------------------------------------------------------------
 
 func (m Model) renderPlaylistView() string {
 	var b strings.Builder
 
-	// Header
-	total := len(m.Queue.Tracks)
-	title := "Playlist"
-	if total > 0 && m.Queue.Tracks[0].Artist != "" {
-		title = fmt.Sprintf("%s — %d tracks", m.Queue.Tracks[0].Artist, total)
-	} else {
-		title = fmt.Sprintf("%d tracks", total)
-	}
-	b.WriteString(titleStyle.Render(fmt.Sprintf("♪ %s", title)))
+	b.WriteString(m.renderHeader("♪ music-dl"))
 	b.WriteString("\n")
 
-	// Divider
-	b.WriteString(dividerStyle.Render(strings.Repeat("─", m.Width-6)))
-	b.WriteString("\n")
-
-	// Track list
-	tracks := m.filteredTracks()
-	visible := m.Height - 8
-	if visible < 3 {
-		visible = 3
-	}
-
-	start := m.PlaylistScroll
-	end := start + visible
-	if end > len(tracks) {
-		end = len(tracks)
-	}
-	if start > len(tracks) {
-		start = len(tracks)
-	}
-
-	for i, track := range tracks {
-		if i < start || i >= end {
-			continue
-		}
-
-		line := m.renderTrackLine(track, i == m.Cursor)
-		b.WriteString(line)
+	if m.resolveErr != "" {
+		b.WriteString("\n")
+		b.WriteString(warningStyle.Render(m.resolveErr))
 		b.WriteString("\n")
 	}
 
-	// Footer
+	// Show filter bar when active
+	if m.isFiltering {
+		b.WriteString("\n")
+		b.WriteString(emphStyle.Render("  Filter "))
+		b.WriteString(inputStyle.Render(m.filterInput.View()))
+		b.WriteString("\n")
+	}
+
+	// Show counter
+	tracks := m.filteredTracks()
+	filteredCount := ""
+	if m.filter != "" {
+		filteredCount = mutedStyle.Render(fmt.Sprintf("  (%d/%d)", len(tracks), len(m.tracks)))
+	}
+	b.WriteString(fmt.Sprintf("\n%s%s\n\n",
+		mutedStyle.Render(fmt.Sprintf("%d tracks — select with Space, then Enter to download", len(m.tracks))),
+		filteredCount))
+	start := m.scroll
+	end := start + (m.Height - 10)
+	if end > len(tracks) {
+		end = len(tracks)
+	}
+	if start > end {
+		start = 0
+	}
+	visible := tracks[start:end]
+	globalStart := start
+
+	for i, track := range visible {
+		idx := globalStart + i
+		prefix := "  "
+		cursor := " "
+		globalIdx := m.findTrackIndex(track)
+
+		if idx == m.cursor {
+			cursor = "▸"
+		}
+
+		status := statusChar(track.Status)
+		title := track.Title
+		if idx == m.cursor && m.cursor < len(tracks) {
+			title = emphStyle.Render(track.Title)
+		}
+
+		artist := ""
+		if track.Artist != "" {
+			artist = mutedStyle.Render(" — " + track.Artist)
+		}
+
+		if idx == m.cursor {
+			b.WriteString(selectedStyle.Render(fmt.Sprintf("%s %s %s%s", cursor, status, title, artist)))
+		} else {
+			b.WriteString(fmt.Sprintf("%s %s %s%s", prefix, status, title, artist))
+		}
+
+		// Show queue info for this track
+		if m.tracks[globalIdx].Status != domain.StatusPending {
+			b.WriteString("  " + statusLabel(m.tracks[globalIdx].Status))
+		}
+
+		b.WriteString("\n")
+	}
+
 	b.WriteString("\n")
-	footerText := "[Space] toggle  [a]ll  [n]one  [Enter] download  [/] filter  [q] quit"
-	b.WriteString(mutedStyle.Render(footerText))
+	b.WriteString(m.renderFooter())
 
 	return b.String()
 }
 
-func (m Model) renderTrackLine(track model.Media, isCursor bool) string {
-	// Selection indicator
-	var sel string
-	if track.Status == model.StatusCompleted {
-		sel = successStyle.Render("✓")
-	} else {
-		sel = mutedStyle.Render("☐")
-	}
-
-	// Cursor indicator
-	cursor := " "
-	if isCursor {
-		cursor = emphStyle.Render("▸")
-	}
-
-	// Title + Artist
-	title := track.Title
-	artist := track.Artist
-
-	// Trim to fit
-	maxWidth := m.Width - 16
-	if maxWidth < 20 {
-		maxWidth = 20
-	}
-	title = ellipsis(title, maxWidth/2)
-	artist = ellipsis(artist, maxWidth/2)
-
-	line := fmt.Sprintf("%s %s %-*s  %s",
-		cursor, sel, maxWidth/2, title, mutedStyle.Render(artist))
-
-	if isCursor {
-		return selectedStyle.Render(line)
-	}
-	return textStyle.Render(line)
-}
-
 // ---------------------------------------------------------------------------
-// Screen: Downloading
+// Downloading screen
 // ---------------------------------------------------------------------------
 
 func (m Model) renderDownloadingView() string {
 	var b strings.Builder
 
-	completed := m.Queue.Completed()
-	failed := m.Queue.Failed()
-	total := m.Queue.Len()
+	b.WriteString(m.renderHeader("♪ music-dl — Downloading"))
+	b.WriteString("\n\n")
 
-	// Header
-	b.WriteString(titleStyle.Render(fmt.Sprintf("♪ Downloading (%d/%d)", completed+failed, total)))
-	b.WriteString("\n")
+	total := m.succeeded + m.failed + 1 // +1 for current
+	for i, track := range m.tracks {
+		if track.Status == domain.StatusDone || track.Status == domain.StatusFailed || track.Status == domain.StatusDownloading {
+			prefix := "  "
+			if track.Status == domain.StatusDownloading {
+				prefix = m.Spinner.View() + " "
+			}
 
-	// Divider
-	b.WriteString(dividerStyle.Render(strings.Repeat("─", m.Width-6)))
-	b.WriteString("\n")
+			idx := fmt.Sprintf("%d/%d ", i+1, total)
+			title := track.Title
+			artist := ""
+			if track.Artist != "" {
+				artist = mutedStyle.Render(" — " + track.Artist)
+			}
 
-	// Queue list
-	for i, track := range m.Queue.Tracks {
-		isCurrent := i == m.Queue.Index
-		line := m.renderQueueLine(track, isCurrent)
-		b.WriteString(line)
-		b.WriteString("\n")
+			status := ""
+			switch track.Status {
+			case domain.StatusDownloading:
+				status = emphStyle.Render(" DOWNLOADING")
+			case domain.StatusDone:
+				status = successStyle.Render(" ✓ done")
+			case domain.StatusFailed:
+				status = errorStyle.Render(" ✗ " + track.Error)
+			}
+
+			b.WriteString(fmt.Sprintf("%s%s%s%s%s\n", prefix, mutedStyle.Render(idx), title, artist, status))
+		}
 	}
 
-	// Summary line
 	b.WriteString("\n")
-
-	var parts []string
-	if m.Queue.Failed() > 0 {
-		parts = append(parts, errorStyle.Render(fmt.Sprintf("%d failed", m.Queue.Failed())))
-	}
-	if m.Queue.Completed() > 0 {
-		parts = append(parts, successStyle.Render(fmt.Sprintf("%d downloaded", m.Queue.Completed())))
-	}
-	if m.Queue.Pending() > 0 {
-		parts = append(parts, mutedStyle.Render(fmt.Sprintf("%d remaining", m.Queue.Pending())))
-	}
-	if len(parts) > 0 {
-		b.WriteString(mutedStyle.Render(strings.Join(parts, " · ")))
-		b.WriteString("\n")
-	}
-
-	// Output dir
-	b.WriteString(mutedStyle.Render(fmt.Sprintf("→ %s", m.OutputDir)))
-	b.WriteString("\n")
-
-	// Footer
-	b.WriteString("\n")
-	b.WriteString(m.renderFooter("q", "cancel & quit"))
+	b.WriteString(m.renderFooter())
 
 	return b.String()
 }
 
-func (m Model) renderQueueLine(track model.Media, isCurrent bool) string {
-	status := statusLabel(track.Status)
-	title := track.Title
-	if track.Artist != "" {
-		title = fmt.Sprintf("%s - %s", track.Artist, track.Title)
-	}
-
-	maxWidth := m.Width - 20
-	if maxWidth < 20 {
-		maxWidth = 20
-	}
-	title = ellipsis(title, maxWidth)
-
-	line := fmt.Sprintf("  %s %s", status, textStyle.Render(title))
-
-	if isCurrent {
-		return emphStyle.Render(fmt.Sprintf("▸ %s", title))
-	}
-	return line
-}
-
 // ---------------------------------------------------------------------------
-// Screen: Done
+// Done screen
 // ---------------------------------------------------------------------------
 
 func (m Model) renderDoneView() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("♪ Downloads Complete"))
-	b.WriteString("\n\n")
+	b.WriteString(m.renderHeader("♪ music-dl — Complete"))
+	b.WriteString(fmt.Sprintf("\n\n  %s  %s\n\n",
+		successStyle.Render(fmt.Sprintf("%d downloaded", m.succeeded)),
+		errorStyle.Render(fmt.Sprintf("%d failed", m.failed)),
+	))
 
-	completed := m.Queue.Completed()
-	failed := m.Queue.Failed()
-
-	b.WriteString(fmt.Sprintf("  %s %d downloaded\n", successStyle.Render("✓"), completed))
-
-	if failed > 0 {
-		b.WriteString(fmt.Sprintf("  %s %d failed\n", errorStyle.Render("✗"), failed))
-		// Show which tracks failed
-		for _, t := range m.Queue.Tracks {
-			if t.Status == model.StatusFailed {
-				b.WriteString(fmt.Sprintf("     %s: %s\n",
-					mutedStyle.Render(t.Title),
-					errorStyle.Render(t.ErrorMsg)))
+	if m.succeeded > 0 {
+		b.WriteString(emphStyle.Render("  Downloaded files:"))
+		b.WriteString("\n")
+		for _, track := range m.tracks {
+			if track.Status == domain.StatusDone && track.OutputPath != "" {
+				title := track.Title
+				if track.Artist != "" {
+					title = track.Artist + " - " + title
+				}
+				b.WriteString(fmt.Sprintf("    %s  %s\n", successStyle.Render("✓"), mutedStyle.Render(title)))
+				b.WriteString(fmt.Sprintf("       %s\n", mutedStyle.Render(track.OutputPath)))
 			}
 		}
+		b.WriteString("\n")
 	}
 
-	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(fmt.Sprintf("  → %s", m.OutputDir)))
-	b.WriteString("\n\n")
+	if m.failed > 0 {
+		b.WriteString(errorStyle.Render("  Failed tracks:"))
+		b.WriteString("\n")
+		for _, track := range m.failedTracks {
+			b.WriteString(fmt.Sprintf("    %s  %s — %s\n",
+				errorStyle.Render("✗"),
+				track.Title,
+				mutedStyle.Render(track.Error),
+			))
+		}
+		b.WriteString("\n")
+	}
 
-	b.WriteString(m.renderFooter("enter", "new download", "q", "quit"))
+	b.WriteString(mutedStyle.Render("  Press r to start a new URL, Esc/q to quit."))
+	b.WriteString("\n\n")
+	b.WriteString(m.renderFooter())
 
 	return b.String()
-}
-
-// ---------------------------------------------------------------------------
-// Footer helper
-// ---------------------------------------------------------------------------
-
-// renderFooter builds a footer like: "[key] action  [key] action"
-func (m Model) renderFooter(keysAndActions ...string) string {
-	if len(keysAndActions)%2 != 0 {
-		return ""
-	}
-
-	var parts []string
-	for i := 0; i < len(keysAndActions); i += 2 {
-		key := keysAndActions[i]
-		action := keysAndActions[i+1]
-		part := fmt.Sprintf("%s %s",
-			keyStyle.Render("["+key+"]"),
-			keyDescStyle.Render(action))
-		parts = append(parts, part)
-	}
-
-	return footerStyle.Render(strings.Join(parts, "  "))
-}
-
-// ---------------------------------------------------------------------------
-// Help overlay
-// ---------------------------------------------------------------------------
-
-func (m Model) renderHelpOverlay() string {
-	content := strings.TrimPrefix(`
-  ┌─ Keyboard Shortcuts ──────────────────────────────────┐
-  │                                                        │
-  │  Universal                                             │
-  │    ↑/k        Move up                                  │
-  │    ↓/j        Move down                                │
-  │    Enter      Confirm / select                          │
-  │    Esc        Go back / cancel                          │
-  │    q          Quit                                      │
-  │    ?          Toggle this help                          │
-  │                                                        │
-  │  Playlist Screen                                        │
-  │    Space      Toggle track selection                   │
-  │    a          Select all                               │
-  │    n          Deselect all                             │
-  │    /          Filter tracks                            │
-  │                                                        │
-  │  Download Screen                                       │
-  │    q          Cancel downloads and quit                │
-  │                                                        │
-  │  Done Screen                                           │
-  │    Enter      Start a new download                     │
-  │    q          Quit                                     │
-  │                                                        │
-  └────────────────────────────────────────────────────────┘
-`, "\n")
-
-	return helpStyle.Render(content)
-}
-
-// ---------------------------------------------------------------------------
-// Utility
-// ---------------------------------------------------------------------------
-
-// ellipsis truncates s to maxLen-1 and appends "…" if necessary.
-func ellipsis(s string, maxLen int) string {
-	if len(s) <= maxLen || maxLen < 1 {
-		return s
-	}
-	return s[:maxLen-1] + "…"
 }
