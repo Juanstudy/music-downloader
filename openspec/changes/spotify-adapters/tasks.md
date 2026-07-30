@@ -283,7 +283,7 @@ Batch 9 (Tests): parallel to all above, no hard dependency.
 - **Dependencies:** None (standalone TUI change)
 - **Verification:** Compiles, tests pass.
 - **Owner:** implementation
-- [ ] Add `SourceMode` type, `sourceMode`, `spotifySearcher` fields to Model, update `NewModel` signature in `internal/tui/model.go`. <!-- sdd-owner: implementation -->
+- [x] Add `SourceMode` type, `sourceMode`, `spotifySearcher` fields to Model, update `NewModel` signature in `internal/tui/model.go`. <!-- sdd-owner: implementation -->
 
 ### 7.2 Add source selection logic (`update.go`)
 
@@ -302,7 +302,7 @@ Batch 9 (Tests): parallel to all above, no hard dependency.
 - **Dependencies:** 7.1
 - **Verification:** Tab cycles modes, resolving uses correct searcher.
 - **Owner:** implementation
-- [ ] Implement `selectSearcher()`, Tab cycling, and modify `startResolve` to use the right searcher in `internal/tui/update.go`. <!-- sdd-owner: implementation -->
+- [x] Implement `selectedSearcher()`, Tab cycling, and modify `startResolve` to use the right searcher in `internal/tui/update.go`. <!-- sdd-owner: implementation -->
 
 ### 7.3 Update input and resolving views (`view.go`)
 
@@ -318,7 +318,7 @@ Batch 9 (Tests): parallel to all above, no hard dependency.
 - **Dependencies:** 7.1, 7.2
 - **Verification:** Visual inspection shows source indicator and label.
 - **Owner:** implementation
-- [ ] Update `renderInputView` with source mode indicator and `renderResolvingView` with Spotify-specific label in `internal/tui/view.go`. <!-- sdd-owner: implementation -->
+- [x] Update `renderInputView` with source mode indicator and `renderResolvingView` with Spotify-specific label in `internal/tui/view.go`. <!-- sdd-owner: implementation -->
 
 ### 7.4 Ensure Spotify errors display in UI
 
@@ -333,7 +333,7 @@ Batch 9 (Tests): parallel to all above, no hard dependency.
 - **Dependencies:** 6.1, 7.1
 - **Verification:** Simulated errors display correctly in TUI.
 - **Owner:** implementation
-- [ ] Verify and adjust Spotify error message display in `handleResolveDone`. <!-- sdd-owner: implementation -->
+- [x] Verify and adjust Spotify error message display in `handleResolveDone`. <!-- sdd-owner: implementation -->
 
 ---
 
@@ -378,7 +378,7 @@ Batch 9 (Tests): parallel to all above, no hard dependency.
 - **Dependencies:** 1.2 (config), 4.1 (constructor), 7.1 (NewModel signature)
 - **Verification:** App starts with and without config file. With config, Spotify appears as source option. Without config, app works as before (YouTube only).
 - **Owner:** implementation
-- [ ] Wire config loading and optional SpotifySearcher creation in `cmd/music-dl/main.go`. <!-- sdd-owner: implementation -->
+- [x] Wire config loading and optional SpotifySearcher creation in `cmd/music-dl/main.go`. <!-- sdd-owner: implementation -->
 
 ---
 

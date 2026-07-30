@@ -60,6 +60,7 @@ func (m Model) renderFooter() string {
 	keys := []string{}
 	if m.Screen == ScreenInput {
 		keys = append(keys, keyStyle.Render("Enter")+" "+keyDescStyle.Render("resolve"))
+		keys = append(keys, keyStyle.Render("Tab")+" "+keyDescStyle.Render("source"))
 	}
 	if m.Screen == ScreenPlaylist || m.Screen == ScreenDownloading || m.Screen == ScreenDone {
 		keys = append(keys, keyStyle.Render("q")+" "+keyDescStyle.Render("quit"))
@@ -102,6 +103,10 @@ func (m Model) renderInputView() string {
 	b.WriteString(inputStyle.Render(m.Input.View()))
 	b.WriteString("\n")
 
+	// Source mode indicator
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render("Source: ") + m.renderSourceMode())
+
 	if m.resolveErr != "" {
 		b.WriteString("\n")
 		b.WriteString(errorStyle.Render("✗ " + m.resolveErr))
@@ -114,6 +119,20 @@ func (m Model) renderInputView() string {
 	return b.String()
 }
 
+// renderSourceMode returns a styled string for the current source mode.
+func (m Model) renderSourceMode() string {
+	switch m.sourceMode {
+	case SourceAuto:
+		return emphStyle.Render("Auto") + mutedStyle.Render(" (Tab to switch)")
+	case SourceYouTube:
+		return emphStyle.Render("YouTube")
+	case SourceSpotify:
+		return emphStyle.Render("Spotify")
+	default:
+		return emphStyle.Render("Auto")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Resolving screen
 // ---------------------------------------------------------------------------
@@ -124,7 +143,11 @@ func (m Model) renderResolvingView() string {
 	b.WriteString(m.renderHeader("♪ music-dl"))
 	b.WriteString("\n\n")
 	b.WriteString(m.Spinner.View())
-	b.WriteString(" Resolving URL...\n\n")
+	if m.sourceMode == SourceSpotify {
+		b.WriteString(" Resolving via Spotify...\n\n")
+	} else {
+		b.WriteString(" Resolving URL...\n\n")
+	}
 	b.WriteString(mutedStyle.Render(m.Input.Value()))
 	b.WriteString("\n\n")
 	b.WriteString(m.renderFooter())

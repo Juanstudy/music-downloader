@@ -16,6 +16,8 @@ import (
 	"github.com/Juanstudy/music-downloader/internal/adapters/downloader"
 	"github.com/Juanstudy/music-downloader/internal/adapters/preflight"
 	"github.com/Juanstudy/music-downloader/internal/adapters/searcher"
+	"github.com/Juanstudy/music-downloader/internal/adapters/spotify"
+	"github.com/Juanstudy/music-downloader/internal/core/ports"
 	"github.com/Juanstudy/music-downloader/internal/core/service"
 	"github.com/Juanstudy/music-downloader/internal/tui"
 
@@ -47,8 +49,23 @@ func main() {
 	downloaderImpl := downloader.NewDownloader()
 	orch := service.NewOrchestrator(searcherImpl, downloaderImpl)
 
+	// Optional: wire Spotify adapter if configured.
+	var spotifySearcher ports.Searcher
+	cfgPath := spotify.ConfigPath()
+	cfg, err := spotify.LoadConfig(cfgPath)
+	if err != nil {
+		log.Printf("warning: failed to load Spotify config: %v", err)
+	} else if cfg != nil && cfg.Spotify.ClientID != "" && cfg.Spotify.ClientSecret != "" {
+		spotifySearcher, err = spotify.NewSpotifySearcher(cfg.Spotify.ClientID, cfg.Spotify.ClientSecret, searcherImpl)
+		if err != nil {
+			log.Printf("warning: failed to create Spotify searcher: %v", err)
+		} else {
+			log.Println("Spotify adapter configured")
+		}
+	}
+
 	// Start the Bubble Tea TUI program.
-	m := tui.NewModel(orch, searcherImpl, outputDir)
+	m := tui.NewModel(orch, searcherImpl, spotifySearcher, outputDir)
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		log.Fatalf("error running TUI: %v", err)

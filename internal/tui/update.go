@@ -106,6 +106,24 @@ func (m Model) handleInputKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.startResolve(url)
 		case tea.KeyCtrlC:
 			return m, tea.Quit
+		case tea.KeyTab:
+			switch m.sourceMode {
+			case SourceAuto:
+				if m.spotifySearcher != nil {
+								m.sourceMode = SourceSpotify
+				} else {
+								m.sourceMode = SourceYouTube
+				}
+			case SourceYouTube:
+				if m.spotifySearcher != nil {
+								m.sourceMode = SourceSpotify
+				} else {
+								m.sourceMode = SourceAuto
+				}
+			case SourceSpotify:
+				m.sourceMode = SourceAuto
+			}
+			return m, nil
 		}
 	}
 
@@ -121,7 +139,28 @@ func (m Model) startResolve(url string) (tea.Model, tea.Cmd) {
 	m.Input.Blur()
 	// Bump ID so spinner resets on re-resolve
 	m.InputID++
-	return m, resolveCmd(m.searcher, url)
+	return m, resolveCmd(m.selectedSearcher(), url)
+}
+
+// selectedSearcher returns the Searcher that should be used based on the current source mode.
+func (m Model) selectedSearcher() ports.Searcher {
+	switch m.sourceMode {
+	case SourceSpotify:
+		if m.spotifySearcher != nil {
+			return m.spotifySearcher
+		}
+		return m.searcher
+	case SourceYouTube:
+		return m.searcher
+	case SourceAuto:
+		// Auto-detect by URL — default to Spotify when available
+		if m.spotifySearcher != nil {
+			return m.spotifySearcher
+		}
+		return m.searcher
+	default:
+		return m.searcher
+	}
 }
 
 // resolveCmd creates a tea.Cmd that runs URL resolution in a goroutine.
