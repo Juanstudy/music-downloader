@@ -61,6 +61,7 @@ func (m Model) renderFooter() string {
 	if m.Screen == ScreenInput {
 		keys = append(keys, keyStyle.Render("Enter")+" "+keyDescStyle.Render("resolve"))
 		keys = append(keys, keyStyle.Render("Tab")+" "+keyDescStyle.Render("source"))
+		keys = append(keys, keyStyle.Render("s")+" "+keyDescStyle.Render("search"))
 	}
 	if m.Screen == ScreenPlaylist || m.Screen == ScreenDownloading || m.Screen == ScreenDone {
 		keys = append(keys, keyStyle.Render("q")+" "+keyDescStyle.Render("quit"))
@@ -99,13 +100,27 @@ func (m Model) renderInputView() string {
 
 	b.WriteString(m.renderHeader("♪ music-dl"))
 	b.WriteString("\n\n")
-	b.WriteString("Paste a YouTube or YouTube Music URL:\n\n")
+	if m.searchMode == SearchModeQuery {
+		b.WriteString("Search YouTube Music:\n\n")
+	} else {
+		b.WriteString("Paste a YouTube or YouTube Music URL:\n\n")
+	}
 	b.WriteString(inputStyle.Render(m.Input.View()))
 	b.WriteString("\n")
 
 	// Source mode indicator
 	b.WriteString("\n")
 	b.WriteString(mutedStyle.Render("Source: ") + m.renderSourceMode())
+
+	// Search mode indicator
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render("Search: ") + m.renderSearchMode())
+
+	if m.inputErr != "" {
+		b.WriteString("\n")
+		b.WriteString(errorStyle.Render("✗ " + m.inputErr))
+		b.WriteString("\n")
+	}
 
 	if m.resolveErr != "" {
 		b.WriteString("\n")
@@ -133,6 +148,14 @@ func (m Model) renderSourceMode() string {
 	}
 }
 
+// renderSearchMode returns a styled string for the current search mode.
+func (m Model) renderSearchMode() string {
+	if m.searchMode == SearchModeQuery {
+		return emphStyle.Render("Search") + mutedStyle.Render(" (s to switch)")
+	}
+	return emphStyle.Render("URL")
+}
+
 // ---------------------------------------------------------------------------
 // Resolving screen
 // ---------------------------------------------------------------------------
@@ -145,6 +168,8 @@ func (m Model) renderResolvingView() string {
 	b.WriteString(m.Spinner.View())
 	if m.sourceMode == SourceSpotify {
 		b.WriteString(" Resolving via Spotify...\n\n")
+	} else if m.searchMode == SearchModeQuery {
+		b.WriteString(" Searching YouTube Music...\n\n")
 	} else {
 		b.WriteString(" Resolving URL...\n\n")
 	}

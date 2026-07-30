@@ -95,15 +95,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleInputKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Search mode toggle — intercept before input widget
+		if msg.String() == "s" {
+			return m.toggleSearchMode()
+		}
 		switch msg.Type {
 		case tea.KeyEnter:
-			url := strings.TrimSpace(m.Input.Value())
+			val := strings.TrimSpace(m.Input.Value())
 			m.inputErr = ""
-			if url == "" {
+			if val == "" {
 				m.inputErr = "Please enter a URL"
 				return m, nil
 			}
-			return m.startResolve(url)
+			if m.searchMode == SearchModeQuery {
+				return m.startQuerySearch(val)
+			}
+			// URL mode: check if the input looks like a URL
+			if !strings.Contains(val, "://") {
+				m.inputErr = "That doesn't look like a URL. Press 's' to switch to Search mode."
+				return m, nil
+			}
+			return m.startResolve(val)
 		case tea.KeyCtrlC:
 			return m, tea.Quit
 		case tea.KeyTab:
@@ -175,6 +187,58 @@ func resolveCmd(s ports.Searcher, url string) tea.Cmd {
 }
 
 // ---------------------------------------------------------------------------
+// Search mode (PR3)
+// ---------------------------------------------------------------------------
+
+// toggleSearchMode switches between URL input and free-text search.
+func (m Model) toggleSearchMode() (tea.Model, tea.Cmd) {
+	if m.searchMode == SearchModeURL {
+		m.searchMode = SearchModeQuery
+		m.Input.Placeholder = "search query..."
+	} else {
+		m.searchMode = SearchModeURL
+		m.Input.Placeholder = "https://music.youtube.com/..."
+	}
+	m.Input.SetValue("")
+	m.inputErr = ""
+	m.resolveErr = ""
+
+	if m.Screen != ScreenInput {
+		m.tracks = nil
+		m.cursor = 0
+		m.scroll = 0
+		m.Screen = ScreenInput
+		m.PrevScreen = ScreenInput
+		m.Input.Focus()
+	}
+	return m, nil
+}
+
+// startQuerySearch initiates a YouTube Music search for the given query.
+func (m Model) startQuerySearch(query string) (tea.Model, tea.Cmd) {
+	if strings.TrimSpace(query) == "" {
+		m.inputErr = "Please enter a search query"
+		return m, nil
+	}
+	m.Screen = ScreenResolving
+	m.PrevScreen = ScreenInput
+	m.Input.Blur()
+	m.InputID++
+	return m, searchResolveCmd(m.querySearcher, query, 10)
+}
+
+// searchResolveCmd creates a tea.Cmd that runs a YouTube Music search query.
+func searchResolveCmd(qs ports.QuerySearcher, query string, limit int) tea.Cmd {
+	return func() tea.Msg {
+		result, err := qs.SearchByQuery(context.Background(), query, limit)
+		if err != nil {
+			return resolveFinishedMsg{tracks: result.Tracks, err: err}
+		}
+		return resolveFinishedMsg{tracks: result.Tracks, err: nil}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Resolving screen
 // ---------------------------------------------------------------------------
 
@@ -182,6 +246,17 @@ func (m Model) handleResolvingKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q":
 		return m, tea.Quit
+	case "s":
+		m.Screen = ScreenInput
+		m.tracks = nil
+		m.Input.SetValue("")
+		m.Input.Focus()
+		if m.searchMode == SearchModeURL {
+			m.searchMode = SearchModeQuery
+		} else {
+			m.searchMode = SearchModeURL
+		}
+		return m, nil
 	case "esc":
 		m.Screen = ScreenInput
 		m.PrevScreen = ScreenResolving
@@ -340,6 +415,22 @@ func (m Model) handlePlaylistKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filter = ""
 			m.resolveErr = ""
 			m.Input.SetValue("")
+			return m, nil
+
+		case "s":
+			m.Screen = ScreenInput
+			m.tracks = nil
+			m.cursor = 0
+			m.scroll = 0
+			m.filter = ""
+			m.resolveErr = ""
+			m.Input.SetValue("")
+			if m.searchMode == SearchModeURL {
+				m.searchMode = SearchModeQuery
+			} else {
+				m.searchMode = SearchModeURL
+			}
+			m.Input.Focus()
 			return m, nil
 
 		case "q":

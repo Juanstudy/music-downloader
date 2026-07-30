@@ -15,6 +15,7 @@ import (
 
 	"github.com/Juanstudy/music-downloader/internal/adapters/downloader"
 	"github.com/Juanstudy/music-downloader/internal/adapters/preflight"
+	"github.com/Juanstudy/music-downloader/internal/adapters/querysearcher"
 	"github.com/Juanstudy/music-downloader/internal/adapters/searcher"
 	"github.com/Juanstudy/music-downloader/internal/adapters/spotify"
 	"github.com/Juanstudy/music-downloader/internal/core/ports"
@@ -46,6 +47,7 @@ func main() {
 
 	// Wire hexagonal dependencies.
 	searcherImpl := searcher.NewSearcher()
+	querySearcherImpl := querysearcher.NewQuerySearcher()
 	downloaderImpl := downloader.NewDownloader()
 	orch := service.NewOrchestrator(searcherImpl, downloaderImpl)
 
@@ -65,7 +67,7 @@ func main() {
 	}
 
 	// Start the Bubble Tea TUI program.
-	m := tui.NewModel(orch, searcherImpl, spotifySearcher, outputDir)
+	m := tui.NewModel(orch, searcherImpl, spotifySearcher, querySearcherImpl, outputDir)
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		log.Fatalf("error running TUI: %v", err)

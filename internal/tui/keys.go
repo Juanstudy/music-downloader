@@ -21,6 +21,7 @@ var helpContent = []keyBinding{
 	{"n", "Deselect all"},
 	{"/", "Filter tracks"},
 	{"Esc", "Go back / cancel"},
+	{"s", "Toggle search mode"},
 	{"q", "Quit"},
 	{"?", "Toggle help"},
 }
