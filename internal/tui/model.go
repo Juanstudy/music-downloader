@@ -21,6 +21,15 @@ const (
 	ScreenDone
 )
 
+// SourceMode controls which search backend is active.
+type SourceMode int
+
+const (
+	SourceAuto SourceMode = iota
+	SourceYouTube
+	SourceSpotify
+)
+
 // Model holds all application state for the Bubble Tea program.
 type Model struct {
 	Screen     Screen
@@ -30,9 +39,13 @@ type Model struct {
 	Ready      bool // true after first WindowSizeMsg
 
 	// Dependencies (injected)
-	orchestrator *service.Orchestrator
-	searcher     ports.Searcher
-	outputDir    string
+	orchestrator    *service.Orchestrator
+	searcher        ports.Searcher
+	spotifySearcher ports.Searcher
+	outputDir       string
+
+	// Source selection
+	sourceMode SourceMode
 
 	// Input screen
 	Input   textinput.Model
@@ -70,7 +83,8 @@ func (m Model) Init() tea.Cmd {
 }
 
 // NewModel creates the initial application model with hexagonal wiring.
-func NewModel(orch *service.Orchestrator, searcher ports.Searcher, outputDir string) Model {
+// youtubeSearcher is required; spotifySearcher is optional (pass nil when unavailable).
+func NewModel(orch *service.Orchestrator, youtubeSearcher, spotifySearcher ports.Searcher, outputDir string) Model {
 	ti := textinput.New()
 	ti.Placeholder = "https://music.youtube.com/..."
 	ti.Focus()
@@ -87,16 +101,18 @@ func NewModel(orch *service.Orchestrator, searcher ports.Searcher, outputDir str
 	fi.Width = 40
 
 	return Model{
-		Screen:       ScreenInput,
-		PrevScreen:   ScreenInput,
-		Ready:        false,
-		orchestrator: orch,
-		searcher:     searcher,
-		outputDir:    outputDir,
-		Input:        ti,
-		Spinner:      s,
-		filterInput:  fi,
-		cursor:       0,
-		scroll:       0,
+		Screen:          ScreenInput,
+		PrevScreen:      ScreenInput,
+		Ready:           false,
+		orchestrator:    orch,
+		searcher:        youtubeSearcher,
+		spotifySearcher: spotifySearcher,
+		sourceMode:      SourceAuto,
+		outputDir:       outputDir,
+		Input:           ti,
+		Spinner:         s,
+		filterInput:     fi,
+		cursor:          0,
+		scroll:          0,
 	}
 }
