@@ -211,7 +211,7 @@ Batch 9 (Tests): parallel to all above, no hard dependency.
 - **Dependencies:** 1.1 (package), references `searcher.ParseLine` (no new dependency)
 - **Verification:** Unit test with mocked yt-dlp exec output.
 - **Owner:** implementation
-- [ ] Implement `resolveTrack()` in `internal/adapters/spotify/resolve.go` with ISRC-first, name-fallback ytsearch strategy. <!-- sdd-owner: implementation -->
+- [x] Implement `resolveTrack()` in `internal/adapters/spotify/resolve.go` with ytsearch via `ports.Searcher`. <!-- sdd-owner: implementation -->
 
 ### 5.2 YouTube resolution unit tests (`resolve_test.go`)
 
@@ -227,7 +227,7 @@ Batch 9 (Tests): parallel to all above, no hard dependency.
 - **Dependencies:** 5.1
 - **Verification:** All tests pass.
 - **Owner:** implementation
-- [ ] Create `resolve_test.go` with mocked yt-dlp output tests. <!-- sdd-owner: implementation -->
+- [x] Create `resolve_test.go` with mocked yt-dlp output tests. <!-- sdd-owner: implementation -->
 
 ---
 
@@ -247,7 +247,7 @@ Batch 9 (Tests): parallel to all above, no hard dependency.
 - **Dependencies:** 4.1 (spotify.go skeleton), 5.1 (resolve.go)
 - **Verification:** Integration test with mocked Spotify API + mocked yt-dlp output.
 - **Owner:** implementation
-- [ ] Integrate `resolveTrack()` call into `SpotifySearcher.Search()`, handle success and failure for single-track flow. <!-- sdd-owner: implementation -->
+- [x] Integrate `resolveTrack()` call into `SpotifySearcher.Search()`, handle success and failure for single-track flow. <!-- sdd-owner: implementation -->
 
 ### 6.2 Full Search flow tests (extend spotify_test.go — part 2)
 
@@ -261,7 +261,7 @@ Batch 9 (Tests): parallel to all above, no hard dependency.
 - **Dependencies:** 6.1
 - **Verification:** All tests pass.
 - **Owner:** implementation
-- [ ] Extend `spotify_test.go` with full Search flow integration tests (mocked API + mocked yt-dlp). <!-- sdd-owner: implementation -->
+- [x] Extend `spotify_test.go` with full Search flow integration tests (mocked API + mocked yt-dlp). <!-- sdd-owner: implementation -->
 
 ---
 

@@ -34,6 +34,7 @@ type SpotifySearcher struct {
 	clientID     string
 	clientSecret string
 	httpClient   *http.Client
+	ytSearcher   ports.Searcher
 
 	tokenMu sync.Mutex
 	token   *oauth2Token
@@ -44,7 +45,7 @@ type SpotifySearcher struct {
 
 // NewSpotifySearcher validates credentials and returns a ready-to-use
 // SpotifySearcher.
-func NewSpotifySearcher(clientID, clientSecret string) (*SpotifySearcher, error) {
+func NewSpotifySearcher(clientID, clientSecret string, ytSearcher ports.Searcher) (*SpotifySearcher, error) {
 	if clientID == "" || clientSecret == "" {
 		return nil, errors.New("spotify: clientID and clientSecret are required")
 	}
@@ -53,6 +54,7 @@ func NewSpotifySearcher(clientID, clientSecret string) (*SpotifySearcher, error)
 		clientID:        clientID,
 		clientSecret:    clientSecret,
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
+		ytSearcher:      ytSearcher,
 		accountsBaseURL: accountsBaseURL,
 		apiBaseURL:      apiBaseURL,
 	}, nil
@@ -92,8 +94,14 @@ func (s *SpotifySearcher) Search(ctx context.Context, url string) (ports.SearchR
 		}
 	}
 
+	// Resolve track metadata to a playable YouTube URL.
+	resolved, err := resolveTrack(ctx, track, s.ytSearcher)
+	if err != nil {
+		return ports.SearchResult{}, err
+	}
+
 	return ports.SearchResult{
-		Tracks: []domain.Media{track},
+		Tracks: []domain.Media{resolved},
 		Source: "spotify",
 	}, nil
 }

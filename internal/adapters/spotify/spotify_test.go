@@ -9,8 +9,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Juanstudy/music-downloader/internal/core/domain"
+	"github.com/Juanstudy/music-downloader/internal/core/ports"
 )
 
 // testTrackResponse is the JSON shape for a Spotify track in tests.
@@ -111,6 +113,14 @@ func TestTrack_Success(t *testing.T) {
 		clientID:        "cid",
 		clientSecret:    "csec",
 		httpClient:      ts.Client(),
+		ytSearcher: &mockSearcher{
+			result: ports.SearchResult{
+				Tracks: []domain.Media{{
+					URL:      "https://youtube.com/watch?v=yt123",
+					Duration: 200 * time.Second,
+				}},
+			},
+		},
 		accountsBaseURL: ts.URL,
 		apiBaseURL:      ts.URL,
 	}
@@ -137,7 +147,7 @@ func TestTrack_Success(t *testing.T) {
 	if track.Artist != "Test Artist" {
 		t.Errorf("expected Artist 'Test Artist', got %q", track.Artist)
 	}
-	if track.Duration != 200000*1000000 { // 200000ms = 200s in nanoseconds
+	if track.Duration != 200*time.Second { // from YouTube via resolveTrack
 		t.Errorf("expected Duration 200s, got %v", track.Duration)
 	}
 	if track.Source != "spotify" {
@@ -146,8 +156,9 @@ func TestTrack_Success(t *testing.T) {
 	if track.Status != domain.StatusPending {
 		t.Errorf("expected StatusPending, got %v", track.Status)
 	}
-	if track.URL != "" {
-		t.Errorf("expected empty URL, got %q", track.URL)
+	// URL is now the resolved YouTube URL (not empty)
+	if track.URL != "https://youtube.com/watch?v=yt123" {
+		t.Errorf("expected YouTube URL, got %q", track.URL)
 	}
 }
 
@@ -169,6 +180,11 @@ func TestTrack_MultipleArtists(t *testing.T) {
 		clientID:        "cid",
 		clientSecret:    "csec",
 		httpClient:      ts.Client(),
+		ytSearcher: &mockSearcher{
+			result: ports.SearchResult{
+				Tracks: []domain.Media{{URL: "https://youtube.com/watch?v=multi"}},
+			},
+		},
 		accountsBaseURL: ts.URL,
 		apiBaseURL:      ts.URL,
 	}
@@ -184,6 +200,14 @@ func TestTrack_MultipleArtists(t *testing.T) {
 	track := result.Tracks[0]
 	if track.Artist != "Alice, Bob" {
 		t.Errorf("expected 'Alice, Bob', got %q", track.Artist)
+	}
+	// Source remains spotify after resolution
+	if track.Source != "spotify" {
+		t.Errorf("expected Source spotify, got %q", track.Source)
+	}
+	// URL resolved from YouTube
+	if track.URL != "https://youtube.com/watch?v=multi" {
+		t.Errorf("expected YouTube URL, got %q", track.URL)
 	}
 }
 
@@ -212,6 +236,11 @@ func TestToken_Unauthorized_Retry(t *testing.T) {
 		clientID:        "cid",
 		clientSecret:    "csec",
 		httpClient:      ts.Client(),
+		ytSearcher: &mockSearcher{
+			result: ports.SearchResult{
+				Tracks: []domain.Media{{URL: "https://youtube.com/watch?v=retry"}},
+			},
+		},
 		accountsBaseURL: ts.URL,
 		apiBaseURL:      ts.URL,
 	}
@@ -316,17 +345,17 @@ func TestInvalidURL(t *testing.T) {
 }
 
 func TestMissingCredentials(t *testing.T) {
-	_, err := NewSpotifySearcher("", "secret")
+	_, err := NewSpotifySearcher("", "secret", nil)
 	if err == nil {
 		t.Fatal("expected error for missing clientID")
 	}
 
-	_, err = NewSpotifySearcher("id", "")
+	_, err = NewSpotifySearcher("id", "", nil)
 	if err == nil {
 		t.Fatal("expected error for missing clientSecret")
 	}
 
-	_, err = NewSpotifySearcher("", "")
+	_, err = NewSpotifySearcher("", "", nil)
 	if err == nil {
 		t.Fatal("expected error for missing both")
 	}
@@ -361,5 +390,178 @@ func TestContextCancelled(t *testing.T) {
 	// Should be a network error wrapping context.Canceled
 	if !errors.Is(err, context.Canceled) {
 		t.Logf("error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Full-flow integration tests (PR 3: YouTube Resolution)
+// ---------------------------------------------------------------------------
+
+func TestSearch_FullFlow_Success(t *testing.T) {
+	spy := &spyHandler{}
+	ts := newTestServer(t, spy)
+	defer ts.Close()
+
+	s := &SpotifySearcher{
+		clientID:        "cid",
+		clientSecret:    "csec",
+		httpClient:      ts.Client(),
+		ytSearcher: &mockSearcher{
+			result: ports.SearchResult{
+				Tracks: []domain.Media{{
+					URL:      "https://youtube.com/watch?v=fullflow",
+					Duration: 210 * time.Second,
+				}},
+			},
+		},
+		accountsBaseURL: ts.URL,
+		apiBaseURL:      ts.URL,
+	}
+
+	result, err := s.Search(
+		context.Background(),
+		"https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Source != "spotify" {
+		t.Errorf("expected Source 'spotify', got %q", result.Source)
+	}
+	if len(result.Tracks) != 1 {
+		t.Fatalf("expected 1 track, got %d", len(result.Tracks))
+	}
+
+	track := result.Tracks[0]
+	// Spotify metadata preserved
+	if track.Title != "Test Track" {
+		t.Errorf("expected Title 'Test Track', got %q", track.Title)
+	}
+	if track.Artist != "Test Artist" {
+		t.Errorf("expected Artist 'Test Artist', got %q", track.Artist)
+	}
+	// YouTube URL and duration
+	if track.URL != "https://youtube.com/watch?v=fullflow" {
+		t.Errorf("expected YouTube URL, got %q", track.URL)
+	}
+	if track.Duration != 210*time.Second {
+		t.Errorf("expected Duration 210s, got %v", track.Duration)
+	}
+	// Source is still spotify
+	if track.Source != "spotify" {
+		t.Errorf("expected Source 'spotify', got %q", track.Source)
+	}
+	if track.Status != domain.StatusPending {
+		t.Errorf("expected StatusPending, got %v", track.Status)
+	}
+}
+
+func TestSearch_NoYouTubeMatch(t *testing.T) {
+	spy := &spyHandler{}
+	ts := newTestServer(t, spy)
+	defer ts.Close()
+
+	s := &SpotifySearcher{
+		clientID:        "cid",
+		clientSecret:    "csec",
+		httpClient:      ts.Client(),
+		ytSearcher: &mockSearcher{
+			result: ports.SearchResult{
+				Tracks: []domain.Media{},
+			},
+		},
+		accountsBaseURL: ts.URL,
+		apiBaseURL:      ts.URL,
+	}
+
+	result, err := s.Search(
+		context.Background(),
+		"https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Track is included even when YouTube resolution fails
+	if len(result.Tracks) != 1 {
+		t.Fatalf("expected 1 track, got %d", len(result.Tracks))
+	}
+
+	track := result.Tracks[0]
+	if track.Status != domain.StatusFailed {
+		t.Errorf("expected StatusFailed, got %v", track.Status)
+	}
+	if track.Error == "" {
+		t.Error("expected error message on track")
+	}
+	if track.Source != "spotify" {
+		t.Errorf("expected Source 'spotify', got %q", track.Source)
+	}
+	// Original metadata still present
+	if track.Title != "Test Track" {
+		t.Errorf("expected Title 'Test Track', got %q", track.Title)
+	}
+	if track.Artist != "Test Artist" {
+		t.Errorf("expected Artist 'Test Artist', got %q", track.Artist)
+	}
+}
+
+func TestSearch_SpotifyAPIDown(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/token":
+			writeTokenResponse(w, http.StatusOK, "BQtoken", 3600)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer ts.Close()
+
+	s := &SpotifySearcher{
+		clientID:        "cid",
+		clientSecret:    "csec",
+		httpClient:      ts.Client(),
+		accountsBaseURL: ts.URL,
+		apiBaseURL:      ts.URL,
+	}
+
+	_, err := s.Search(
+		context.Background(),
+		"https://open.spotify.com/track/abc123",
+	)
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+
+	var de domain.Error
+	if !errors.As(err, &de) {
+		t.Fatalf("expected domain.Error, got %T", err)
+	}
+	if de.Code != domain.ErrorNetwork {
+		t.Errorf("expected ErrorNetwork, got %v", de.Code)
+	}
+}
+
+func TestSearch_InvalidURL(t *testing.T) {
+	s := &SpotifySearcher{
+		clientID:        "cid",
+		clientSecret:    "csec",
+		httpClient:      http.DefaultClient,
+		accountsBaseURL: "https://accounts.spotify.com",
+		apiBaseURL:      "https://api.spotify.com",
+	}
+
+	_, err := s.Search(context.Background(), "https://youtube.com/watch?v=xxx")
+	if err == nil {
+		t.Fatal("expected error for non-Spotify URL")
+	}
+
+	var de domain.Error
+	if !errors.As(err, &de) {
+		t.Fatalf("expected domain.Error, got %T", err)
+	}
+	if de.Code != domain.ErrorInvalidURL {
+		t.Errorf("expected ErrorInvalidURL, got %v", de.Code)
 	}
 }
