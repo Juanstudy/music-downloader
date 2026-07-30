@@ -114,6 +114,11 @@ func (s *SpotifySearcher) fetchToken(ctx context.Context) (*oauth2Token, error) 
 		}
 	case http.StatusBadRequest, http.StatusUnauthorized:
 		return nil, fmt.Errorf("spotify auth failed (HTTP %d): %s", resp.StatusCode, string(raw))
+	case http.StatusForbidden:
+		return nil, domain.Error{
+			Code:    domain.ErrorTrackUnavailable,
+			Message: "Spotify: Premium subscription required (HTTP 403). See README for setup instructions.",
+		}
 	default:
 		return nil, domain.Error{
 			Code:    domain.ErrorNetwork,

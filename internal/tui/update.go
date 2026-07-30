@@ -110,15 +110,15 @@ func (m Model) handleInputKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.sourceMode {
 			case SourceAuto:
 				if m.spotifySearcher != nil {
-								m.sourceMode = SourceSpotify
+					m.sourceMode = SourceSpotify
 				} else {
-								m.sourceMode = SourceYouTube
+					m.sourceMode = SourceYouTube
 				}
 			case SourceYouTube:
 				if m.spotifySearcher != nil {
-								m.sourceMode = SourceSpotify
+					m.sourceMode = SourceSpotify
 				} else {
-								m.sourceMode = SourceAuto
+					m.sourceMode = SourceAuto
 				}
 			case SourceSpotify:
 				m.sourceMode = SourceAuto

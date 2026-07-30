@@ -14,8 +14,7 @@ Construido con [Go](https://go.dev) + [Bubble Tea](https://github.com/charmbrace
 
 ### Roadmap (post-MVP)
 
-- Búsqueda por nombre/artista/álbum
-- Spotify y SoundCloud como fuentes
+- Búsqueda semántica por nombre/artista/álbum
 - Calidad configurable (128k, 320k, lossless)
 - Progress bars en descargas
 - Descarga concurrente
@@ -24,6 +23,7 @@ Construido con [Go](https://go.dev) + [Bubble Tea](https://github.com/charmbrace
 
 ### Implementado recientemente
 
+- **Spotify como fuente** — pegar URLs de Spotify, resuelve metadata y busca el track en YouTube automáticamente
 - Filtro `/` en la playlist (filtrado en tiempo real por título o artista)
 - Help overlay con `?`
 - Manejo consistente de errores entre pantallas
@@ -49,6 +49,36 @@ sudo pacman -S yt-dlp ffmpeg
 pip install yt-dlp
 # e instalá ffmpeg por separado: https://ffmpeg.org/download.html
 ```
+
+## Spotify (fuente adicional)
+
+Spotify está soportado como fuente de búsqueda: pegás una URL de Spotify, la app obtiene la metadata
+(título, artista, duración) y busca automáticamente el track en YouTube para descargarlo.
+
+### Requisito: cuenta Premium
+
+> ⚠️ Desde Febrero 2026, Spotify exige que el **dueño de la app en el Developer Dashboard**
+> tenga una **suscripción Premium activa**. Sin Premium, la API devuelve `403 Forbidden`.
+
+Si tenés Premium, el proceso es:
+
+1. Andá a [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
+2. Creá una app → copiá **Client ID** y **Client Secret**
+3. Configurá el archivo local:
+
+```bash
+mkdir -p ~/.config/music-dl
+cat > ~/.config/music-dl/config.toml << 'EOF'
+[spotify]
+client_id = "tu_client_id"
+client_secret = "tu_client_secret"
+EOF
+chmod 600 ~/.config/music-dl/config.toml
+```
+
+1. En la app, apretá **Tab** para cambiar la fuente a Spotify.
+
+Sin este archivo, la app arranca igual (solo YouTube) y el Tab solo cicla Auto/YouTube.
 
 ## Instalación
 

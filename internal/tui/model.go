@@ -39,10 +39,10 @@ type Model struct {
 	Ready      bool // true after first WindowSizeMsg
 
 	// Dependencies (injected)
-	orchestrator     *service.Orchestrator
-	searcher         ports.Searcher
-	spotifySearcher  ports.Searcher
-	outputDir        string
+	orchestrator    *service.Orchestrator
+	searcher        ports.Searcher
+	spotifySearcher ports.Searcher
+	outputDir       string
 
 	// Source selection
 	sourceMode SourceMode
@@ -101,18 +101,18 @@ func NewModel(orch *service.Orchestrator, youtubeSearcher, spotifySearcher ports
 	fi.Width = 40
 
 	return Model{
-		Screen:         ScreenInput,
-		PrevScreen:     ScreenInput,
-		Ready:          false,
-		orchestrator:   orch,
-		searcher:       youtubeSearcher,
+		Screen:          ScreenInput,
+		PrevScreen:      ScreenInput,
+		Ready:           false,
+		orchestrator:    orch,
+		searcher:        youtubeSearcher,
 		spotifySearcher: spotifySearcher,
-		sourceMode:     SourceAuto,
-		outputDir:      outputDir,
-		Input:          ti,
-		Spinner:        s,
-		filterInput:    fi,
-		cursor:         0,
-		scroll:         0,
+		sourceMode:      SourceAuto,
+		outputDir:       outputDir,
+		Input:           ti,
+		Spinner:         s,
+		filterInput:     fi,
+		cursor:          0,
+		scroll:          0,
 	}
 }

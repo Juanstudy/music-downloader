@@ -17,9 +17,9 @@ import (
 
 // testTrackResponse is the JSON shape for a Spotify track in tests.
 type testTrackResponse struct {
-	Name       string            `json:"name"`
-	Artists    []testArtist      `json:"artists"`
-	DurationMS int               `json:"duration_ms"`
+	Name       string       `json:"name"`
+	Artists    []testArtist `json:"artists"`
+	DurationMS int          `json:"duration_ms"`
 }
 
 type testArtist struct {
@@ -110,9 +110,9 @@ func TestTrack_Success(t *testing.T) {
 	defer ts.Close()
 
 	s := &SpotifySearcher{
-		clientID:        "cid",
-		clientSecret:    "csec",
-		httpClient:      ts.Client(),
+		clientID:     "cid",
+		clientSecret: "csec",
+		httpClient:   ts.Client(),
 		ytSearcher: &mockSearcher{
 			result: ports.SearchResult{
 				Tracks: []domain.Media{{
@@ -177,9 +177,9 @@ func TestTrack_MultipleArtists(t *testing.T) {
 	defer ts.Close()
 
 	s := &SpotifySearcher{
-		clientID:        "cid",
-		clientSecret:    "csec",
-		httpClient:      ts.Client(),
+		clientID:     "cid",
+		clientSecret: "csec",
+		httpClient:   ts.Client(),
 		ytSearcher: &mockSearcher{
 			result: ports.SearchResult{
 				Tracks: []domain.Media{{URL: "https://youtube.com/watch?v=multi"}},
@@ -233,9 +233,9 @@ func TestToken_Unauthorized_Retry(t *testing.T) {
 	defer ts.Close()
 
 	s := &SpotifySearcher{
-		clientID:        "cid",
-		clientSecret:    "csec",
-		httpClient:      ts.Client(),
+		clientID:     "cid",
+		clientSecret: "csec",
+		httpClient:   ts.Client(),
 		ytSearcher: &mockSearcher{
 			result: ports.SearchResult{
 				Tracks: []domain.Media{{URL: "https://youtube.com/watch?v=retry"}},
@@ -403,9 +403,9 @@ func TestSearch_FullFlow_Success(t *testing.T) {
 	defer ts.Close()
 
 	s := &SpotifySearcher{
-		clientID:        "cid",
-		clientSecret:    "csec",
-		httpClient:      ts.Client(),
+		clientID:     "cid",
+		clientSecret: "csec",
+		httpClient:   ts.Client(),
 		ytSearcher: &mockSearcher{
 			result: ports.SearchResult{
 				Tracks: []domain.Media{{
@@ -463,9 +463,9 @@ func TestSearch_NoYouTubeMatch(t *testing.T) {
 	defer ts.Close()
 
 	s := &SpotifySearcher{
-		clientID:        "cid",
-		clientSecret:    "csec",
-		httpClient:      ts.Client(),
+		clientID:     "cid",
+		clientSecret: "csec",
+		httpClient:   ts.Client(),
 		ytSearcher: &mockSearcher{
 			result: ports.SearchResult{
 				Tracks: []domain.Media{},

@@ -109,8 +109,8 @@ func (s *SpotifySearcher) Search(ctx context.Context, url string) (ports.SearchR
 // spotifyTrackResponse is the JSON shape of a single track from the Spotify
 // Web API.
 type spotifyTrackResponse struct {
-	Name       string `json:"name"`
-	Artists    []struct {
+	Name    string `json:"name"`
+	Artists []struct {
 		Name string `json:"name"`
 	} `json:"artists"`
 	DurationMS int `json:"duration_ms"`
