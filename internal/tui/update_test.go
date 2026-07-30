@@ -925,3 +925,27 @@ func TestSearchMode_SeamlessToggle(t *testing.T) {
 		t.Errorf("expected input to remain empty, got %q", state.Input.Value())
 	}
 }
+
+func TestSearchMode_NilQuerySearcherShowsError(t *testing.T) {
+	m := Model{
+		Screen:     ScreenInput,
+		Ready:      true,
+		searchMode: SearchModeQuery,
+		Input:      newInput(),
+		// querySearcher is nil — no adapter wired
+	}
+	m.Input.SetValue("rock baladas 90s")
+
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	if cmd != nil {
+		t.Error("expected nil cmd when querySearcher is nil")
+	}
+	if updated.Screen != ScreenInput {
+		t.Errorf("expected ScreenInput, got %d", updated.Screen)
+	}
+	if updated.inputErr == "" {
+		t.Error("expected inputErr when querySearcher is nil")
+	}
+}

@@ -220,6 +220,10 @@ func (m Model) startQuerySearch(query string) (tea.Model, tea.Cmd) {
 		m.inputErr = "Please enter a search query"
 		return m, nil
 	}
+	if m.querySearcher == nil {
+		m.inputErr = "Search is not available: no search adapter configured"
+		return m, nil
+	}
 	m.Screen = ScreenResolving
 	m.PrevScreen = ScreenInput
 	m.Input.Blur()
@@ -230,6 +234,9 @@ func (m Model) startQuerySearch(query string) (tea.Model, tea.Cmd) {
 // searchResolveCmd creates a tea.Cmd that runs a YouTube Music search query.
 func searchResolveCmd(qs ports.QuerySearcher, query string, limit int) tea.Cmd {
 	return func() tea.Msg {
+		if qs == nil {
+			return resolveFinishedMsg{err: errors.New("search adapter not configured")}
+		}
 		result, err := qs.SearchByQuery(context.Background(), query, limit)
 		if err != nil {
 			return resolveFinishedMsg{tracks: result.Tracks, err: err}
