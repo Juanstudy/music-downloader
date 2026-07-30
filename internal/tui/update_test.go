@@ -1012,3 +1012,21 @@ func TestSearch_ContextCancelledOnNavigateAway(t *testing.T) {
 		t.Error("expected context to be cancelled after navigating away")
 	}
 }
+
+func TestCtrlCOnPlaylistQuits(t *testing.T) {
+	m := Model{Screen: ScreenPlaylist, Ready: true, tracks: sampleTracks()}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+
+	if cmd == nil {
+		t.Error("expected non-nil quit cmd from playlist via Ctrl+C")
+	}
+}
+
+func TestCtrlCOnResolvingQuits(t *testing.T) {
+	m := Model{Screen: ScreenResolving, Ready: true}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+
+	if cmd == nil {
+		t.Error("expected non-nil quit cmd from resolving via Ctrl+C")
+	}
+}

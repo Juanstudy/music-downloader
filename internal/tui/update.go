@@ -39,9 +39,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
-			if m.Screen == ScreenInput {
-				return m, tea.Quit
-			}
+			return m, tea.Quit
 		case "?":
 			m.showHelp = !m.showHelp
 			return m, nil
