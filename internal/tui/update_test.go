@@ -964,10 +964,51 @@ func (s *timeoutCheckStub) SearchByQuery(ctx context.Context, query string, limi
 
 func TestSearchResolveCmd_HasTimeout(t *testing.T) {
 	stub := &timeoutCheckStub{t: t}
-	cmd := searchResolveCmd(stub, "test query", 5)
+	cmd := searchResolveCmd(context.Background(), stub, "test query", 5)
 	msg := cmd()
 
 	if _, ok := msg.(resolveFinishedMsg); !ok {
 		t.Errorf("expected resolveFinishedMsg, got %T", msg)
+	}
+}
+
+type contextCaptureStub struct {
+	capturedCtx context.Context
+}
+
+func (s *contextCaptureStub) SearchByQuery(ctx context.Context, query string, limit int) (ports.SearchResult, error) {
+	s.capturedCtx = ctx
+	return ports.SearchResult{}, nil
+}
+
+func TestSearch_ContextCancelledOnNavigateAway(t *testing.T) {
+	stub := &contextCaptureStub{}
+	m := Model{
+		Screen:        ScreenInput,
+		Ready:         true,
+		searchMode:    SearchModeQuery,
+		Input:         newInput(),
+		querySearcher: stub,
+	}
+	m.Input.SetValue("rock baladas 90s")
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	if updated.searchCancel == nil {
+		t.Fatal("expected searchCancel to be set after starting search")
+	}
+
+	// Navigate away by toggling mode
+	m3, _ := updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	navigated := m3.(Model)
+
+	if navigated.searchCancel != nil {
+		t.Error("expected searchCancel to be nil after navigating away")
+	}
+
+	// The captured context should now be cancelled
+	if stub.capturedCtx != nil && stub.capturedCtx.Err() == nil {
+		t.Error("expected context to be cancelled after navigating away")
 	}
 }

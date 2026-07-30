@@ -224,23 +224,27 @@ func (m Model) startQuerySearch(query string) (tea.Model, tea.Cmd) {
 		m.inputErr = "Search is not available: no search adapter configured"
 		return m, nil
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.searchCancel = cancel
 	m.Screen = ScreenResolving
 	m.PrevScreen = ScreenInput
 	m.Input.Blur()
 	m.InputID++
-	return m, searchResolveCmd(m.querySearcher, query, 10)
+	return m, searchResolveCmd(ctx, m.querySearcher, query, 10)
 }
 
 // searchResolveCmd creates a tea.Cmd that runs a YouTube Music search query
-// with a 30-second timeout to prevent hanging.
-func searchResolveCmd(qs ports.QuerySearcher, query string, limit int) tea.Cmd {
+// with a 30-second timeout to prevent hanging. The ctx parameter allows the
+// caller to cancel the in-flight search (e.g., when navigating away).
+func searchResolveCmd(ctx context.Context, qs ports.QuerySearcher, query string, limit int) tea.Cmd {
 	return func() tea.Msg {
 		if qs == nil {
 			return resolveFinishedMsg{err: errors.New("search adapter not configured")}
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// Derive a timeout context from the parent (which may be cancelled by navigation)
+		searchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		result, err := qs.SearchByQuery(ctx, query, limit)
+		result, err := qs.SearchByQuery(searchCtx, query, limit)
 		if err != nil {
 			return resolveFinishedMsg{tracks: result.Tracks, err: err}
 		}
@@ -257,6 +261,10 @@ func (m Model) handleResolvingKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q":
 		return m, tea.Quit
 	case "s":
+		if m.searchCancel != nil {
+			m.searchCancel()
+			m.searchCancel = nil
+		}
 		m.Screen = ScreenInput
 		m.tracks = nil
 		m.Input.SetValue("")
@@ -268,6 +276,10 @@ func (m Model) handleResolvingKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "esc":
+		if m.searchCancel != nil {
+			m.searchCancel()
+			m.searchCancel = nil
+		}
 		m.Screen = ScreenInput
 		m.PrevScreen = ScreenResolving
 		m.Input.Focus()
@@ -418,6 +430,10 @@ func (m Model) handlePlaylistKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.startDownload()
 
 		case "esc":
+			if m.searchCancel != nil {
+				m.searchCancel()
+				m.searchCancel = nil
+			}
 			m.Screen = ScreenInput
 			m.tracks = nil
 			m.cursor = 0
@@ -428,6 +444,10 @@ func (m Model) handlePlaylistKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "s":
+			if m.searchCancel != nil {
+				m.searchCancel()
+				m.searchCancel = nil
+			}
 			m.Screen = ScreenInput
 			m.tracks = nil
 			m.cursor = 0

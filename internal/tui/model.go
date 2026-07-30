@@ -2,6 +2,8 @@
 package tui
 
 import (
+	"context"
+
 	"github.com/Juanstudy/music-downloader/internal/core/domain"
 	"github.com/Juanstudy/music-downloader/internal/core/ports"
 	"github.com/Juanstudy/music-downloader/internal/core/service"
@@ -55,6 +57,9 @@ type Model struct {
 	// Query search dependencies
 	querySearcher ports.QuerySearcher
 	searchMode    SearchMode
+
+	// searchCancel cancels an in-flight search goroutine when navigating away
+	searchCancel context.CancelFunc
 
 	// Source selection
 	sourceMode SourceMode
