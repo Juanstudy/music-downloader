@@ -722,3 +722,206 @@ func TestInputVeryLongURL(t *testing.T) {
 		t.Error("expected non-nil cmd for resolve")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Search Mode Tests (PR3)
+// ---------------------------------------------------------------------------
+
+type stubQuerySearcher struct {
+	result ports.SearchResult
+	err    error
+}
+
+func (s *stubQuerySearcher) SearchByQuery(ctx context.Context, query string, limit int) (ports.SearchResult, error) {
+	return s.result, s.err
+}
+
+func TestSearchMode_ToggleOnInput(t *testing.T) {
+	m := Model{Screen: ScreenInput, Ready: true, searchMode: SearchModeURL, Input: newInput()}
+	m.Input.SetValue("https://example.com")
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	updated := m2.(Model)
+
+	if updated.searchMode != SearchModeQuery {
+		t.Errorf("expected searchMode=SearchModeQuery (%d), got %d", SearchModeQuery, updated.searchMode)
+	}
+	if updated.Screen != ScreenInput {
+		t.Errorf("expected ScreenInput (%d), got %d", ScreenInput, updated.Screen)
+	}
+	if updated.Input.Value() != "" {
+		t.Errorf("expected input to be cleared, got %q", updated.Input.Value())
+	}
+}
+
+func TestSearchMode_ToggleOnPlaylist(t *testing.T) {
+	m := Model{Screen: ScreenPlaylist, Ready: true, tracks: sampleTracks(), searchMode: SearchModeURL, Input: newInput()}
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenInput {
+		t.Errorf("expected ScreenInput (%d), got %d", ScreenInput, updated.Screen)
+	}
+	if updated.tracks != nil {
+		t.Error("expected tracks to be cleared")
+	}
+	if updated.searchMode != SearchModeQuery {
+		t.Errorf("expected searchMode=SearchModeQuery (%d), got %d", SearchModeQuery, updated.searchMode)
+	}
+}
+
+func TestSearchMode_ToggleOnResolving(t *testing.T) {
+	m := Model{Screen: ScreenResolving, Ready: true, searchMode: SearchModeURL, Input: newInput()}
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenInput {
+		t.Errorf("expected ScreenInput (%d), got %d", ScreenInput, updated.Screen)
+	}
+	if updated.searchMode != SearchModeQuery {
+		t.Errorf("expected searchMode=SearchModeQuery (%d), got %d", SearchModeQuery, updated.searchMode)
+	}
+}
+
+func TestSearchMode_ToggleTwice(t *testing.T) {
+	m := Model{Screen: ScreenInput, Ready: true, searchMode: SearchModeURL, Input: newInput()}
+
+	// First toggle: URL → Query
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	afterFirst := m2.(Model)
+	if afterFirst.searchMode != SearchModeQuery {
+		t.Fatalf("after first toggle: expected SearchModeQuery (%d), got %d", SearchModeQuery, afterFirst.searchMode)
+	}
+
+	// Second toggle: Query → URL
+	m3, _ := afterFirst.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	afterSecond := m3.(Model)
+	if afterSecond.searchMode != SearchModeURL {
+		t.Errorf("after second toggle: expected SearchModeURL (%d), got %d", SearchModeURL, afterSecond.searchMode)
+	}
+}
+
+func TestSearchMode_EnterTriggersSearch(t *testing.T) {
+	m := Model{
+		Screen:        ScreenInput,
+		Ready:         true,
+		searchMode:    SearchModeQuery,
+		Input:         newInput(),
+		querySearcher: &stubQuerySearcher{},
+	}
+	m.Input.SetValue("rock baladas 90s")
+
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenResolving {
+		t.Errorf("expected ScreenResolving (%d), got %d", ScreenResolving, updated.Screen)
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd for search resolve")
+	}
+}
+
+func TestSearchMode_EmptyQuery(t *testing.T) {
+	m := Model{Screen: ScreenInput, Ready: true, searchMode: SearchModeQuery, Input: newInput()}
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenInput {
+		t.Errorf("expected ScreenInput (%d), got %d", ScreenInput, updated.Screen)
+	}
+	if updated.inputErr == "" {
+		t.Error("expected non-empty inputErr for empty query")
+	}
+}
+
+func TestURLMode_NonURLSuggestion(t *testing.T) {
+	m := Model{Screen: ScreenInput, Ready: true, searchMode: SearchModeURL, Input: newInput()}
+	m.Input.SetValue("hello world")
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenInput {
+		t.Errorf("expected ScreenInput (%d), got %d", ScreenInput, updated.Screen)
+	}
+	if updated.inputErr == "" {
+		t.Error("expected non-empty inputErr for non-URL text")
+	}
+	if !strings.Contains(updated.inputErr, "URL") {
+		t.Errorf("expected inputErr to mention URL, got %q", updated.inputErr)
+	}
+}
+
+func TestURLMode_ValidURLStillResolves(t *testing.T) {
+	m := Model{Screen: ScreenInput, Ready: true, searchMode: SearchModeURL, Input: newInput()}
+	m.Input.SetValue("https://music.youtube.com/playlist?list=xyz")
+
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenResolving {
+		t.Errorf("expected ScreenResolving (%d), got %d", ScreenResolving, updated.Screen)
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd for URL resolve")
+	}
+}
+
+func TestSearchMode_SearchResultsFlow(t *testing.T) {
+	m := Model{Screen: ScreenResolving, Ready: true, tracks: nil}
+
+	msg := resolveFinishedMsg{
+		tracks: sampleTracks(),
+		err:    nil,
+	}
+
+	m2, cmd := m.Update(msg)
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenPlaylist {
+		t.Errorf("expected ScreenPlaylist (%d), got %d", ScreenPlaylist, updated.Screen)
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd for playlist")
+	}
+	if len(updated.tracks) != 3 {
+		t.Errorf("expected 3 tracks, got %d", len(updated.tracks))
+	}
+}
+
+func TestSearchMode_SeamlessToggle(t *testing.T) {
+	m := Model{Screen: ScreenInput, Ready: true, searchMode: SearchModeURL, Input: newInput()}
+
+	// Press s → SearchModeQuery
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	state := m2.(Model)
+	if state.searchMode != SearchModeQuery {
+		t.Fatalf("step 1: expected SearchModeQuery, got %d", state.searchMode)
+	}
+	if state.Screen != ScreenInput {
+		t.Fatalf("step 1: expected ScreenInput, got %d", state.Screen)
+	}
+
+	// Press s again → SearchModeURL
+	m3, _ := state.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	state = m3.(Model)
+	if state.searchMode != SearchModeURL {
+		t.Fatalf("step 2: expected SearchModeURL, got %d", state.searchMode)
+	}
+
+	// Press s again → SearchModeQuery
+	m4, _ := state.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	state = m4.(Model)
+	if state.searchMode != SearchModeQuery {
+		t.Fatalf("step 3: expected SearchModeQuery, got %d", state.searchMode)
+	}
+
+	// Input should still be empty after toggles
+	if state.Input.Value() != "" {
+		t.Errorf("expected input to remain empty, got %q", state.Input.Value())
+	}
+}

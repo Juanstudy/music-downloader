@@ -30,6 +30,14 @@ const (
 	SourceSpotify
 )
 
+// SearchMode toggles between URL input and free-text search input.
+type SearchMode int
+
+const (
+	SearchModeURL SearchMode = iota
+	SearchModeQuery
+)
+
 // Model holds all application state for the Bubble Tea program.
 type Model struct {
 	Screen     Screen
@@ -43,6 +51,10 @@ type Model struct {
 	searcher        ports.Searcher
 	spotifySearcher ports.Searcher
 	outputDir       string
+
+	// Query search dependencies
+	querySearcher ports.QuerySearcher
+	searchMode    SearchMode
 
 	// Source selection
 	sourceMode SourceMode
@@ -84,7 +96,7 @@ func (m Model) Init() tea.Cmd {
 
 // NewModel creates the initial application model with hexagonal wiring.
 // youtubeSearcher is required; spotifySearcher is optional (pass nil when unavailable).
-func NewModel(orch *service.Orchestrator, youtubeSearcher, spotifySearcher ports.Searcher, outputDir string) Model {
+func NewModel(orch *service.Orchestrator, youtubeSearcher, spotifySearcher ports.Searcher, querySearcher ports.QuerySearcher, outputDir string) Model {
 	ti := textinput.New()
 	ti.Placeholder = "https://music.youtube.com/..."
 	ti.Focus()
@@ -107,6 +119,8 @@ func NewModel(orch *service.Orchestrator, youtubeSearcher, spotifySearcher ports
 		orchestrator:    orch,
 		searcher:        youtubeSearcher,
 		spotifySearcher: spotifySearcher,
+		querySearcher:   querySearcher,
+		searchMode:      SearchModeURL,
 		sourceMode:      SourceAuto,
 		outputDir:       outputDir,
 		Input:           ti,
