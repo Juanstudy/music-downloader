@@ -191,7 +191,14 @@ func resolveCmd(s ports.Searcher, url string) tea.Cmd {
 // ---------------------------------------------------------------------------
 
 // toggleSearchMode switches between URL input and free-text search.
+// It cleans up search state and cancels any in-flight search.
 func (m Model) toggleSearchMode() (tea.Model, tea.Cmd) {
+	// Cancel any in-flight search before switching mode
+	if m.searchCancel != nil {
+		m.searchCancel()
+		m.searchCancel = nil
+	}
+
 	if m.searchMode == SearchModeURL {
 		m.searchMode = SearchModeQuery
 		m.Input.Placeholder = "search query..."
@@ -202,11 +209,13 @@ func (m Model) toggleSearchMode() (tea.Model, tea.Cmd) {
 	m.Input.SetValue("")
 	m.inputErr = ""
 	m.resolveErr = ""
+	m.filter = ""
 
 	if m.Screen != ScreenInput {
 		m.tracks = nil
 		m.cursor = 0
 		m.scroll = 0
+		m.filter = ""
 		m.Screen = ScreenInput
 		m.PrevScreen = ScreenInput
 		m.Input.Focus()
@@ -261,20 +270,7 @@ func (m Model) handleResolvingKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q":
 		return m, tea.Quit
 	case "s":
-		if m.searchCancel != nil {
-			m.searchCancel()
-			m.searchCancel = nil
-		}
-		m.Screen = ScreenInput
-		m.tracks = nil
-		m.Input.SetValue("")
-		m.Input.Focus()
-		if m.searchMode == SearchModeURL {
-			m.searchMode = SearchModeQuery
-		} else {
-			m.searchMode = SearchModeURL
-		}
-		return m, nil
+		return m.toggleSearchMode()
 	case "esc":
 		if m.searchCancel != nil {
 			m.searchCancel()
@@ -448,20 +444,7 @@ func (m Model) handlePlaylistKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.searchCancel()
 				m.searchCancel = nil
 			}
-			m.Screen = ScreenInput
-			m.tracks = nil
-			m.cursor = 0
-			m.scroll = 0
-			m.filter = ""
-			m.resolveErr = ""
-			m.Input.SetValue("")
-			if m.searchMode == SearchModeURL {
-				m.searchMode = SearchModeQuery
-			} else {
-				m.searchMode = SearchModeURL
-			}
-			m.Input.Focus()
-			return m, nil
+			return m.toggleSearchMode()
 
 		case "q":
 			return m, tea.Quit
