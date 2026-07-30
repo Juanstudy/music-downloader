@@ -231,13 +231,16 @@ func (m Model) startQuerySearch(query string) (tea.Model, tea.Cmd) {
 	return m, searchResolveCmd(m.querySearcher, query, 10)
 }
 
-// searchResolveCmd creates a tea.Cmd that runs a YouTube Music search query.
+// searchResolveCmd creates a tea.Cmd that runs a YouTube Music search query
+// with a 30-second timeout to prevent hanging.
 func searchResolveCmd(qs ports.QuerySearcher, query string, limit int) tea.Cmd {
 	return func() tea.Msg {
 		if qs == nil {
 			return resolveFinishedMsg{err: errors.New("search adapter not configured")}
 		}
-		result, err := qs.SearchByQuery(context.Background(), query, limit)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		result, err := qs.SearchByQuery(ctx, query, limit)
 		if err != nil {
 			return resolveFinishedMsg{tracks: result.Tracks, err: err}
 		}

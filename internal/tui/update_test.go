@@ -949,3 +949,25 @@ func TestSearchMode_NilQuerySearcherShowsError(t *testing.T) {
 		t.Error("expected inputErr when querySearcher is nil")
 	}
 }
+
+type timeoutCheckStub struct {
+	t *testing.T
+}
+
+func (s *timeoutCheckStub) SearchByQuery(ctx context.Context, query string, limit int) (ports.SearchResult, error) {
+	_, ok := ctx.Deadline()
+	if !ok {
+		s.t.Error("SearchByQuery context has no deadline — timeout not set")
+	}
+	return ports.SearchResult{}, nil
+}
+
+func TestSearchResolveCmd_HasTimeout(t *testing.T) {
+	stub := &timeoutCheckStub{t: t}
+	cmd := searchResolveCmd(stub, "test query", 5)
+	msg := cmd()
+
+	if _, ok := msg.(resolveFinishedMsg); !ok {
+		t.Errorf("expected resolveFinishedMsg, got %T", msg)
+	}
+}
