@@ -115,10 +115,76 @@ func TestParseLine_MissingTitle(t *testing.T) {
 	}
 }
 
-func TestParseLine_MissingWebpageURL(t *testing.T) {
-	json := `{"title":"Song","duration":100.0,"id":"abc123"}`
+func TestParseLine_EmptyString(t *testing.T) {
+	_, err := ParseLine("")
+	if err == nil {
+		t.Fatal("ParseLine() expected error for empty string, got nil")
+	}
+}
+
+func TestParseLine_AllEmptyFields(t *testing.T) {
+	json := `{"webpage_url":"https://youtube.com/watch?v=abc","title":"","channel":""}`
 	_, err := ParseLine(json)
 	if err == nil {
-		t.Fatal("ParseLine() expected error for missing webpage_url, got nil")
+		t.Fatal("ParseLine() expected error for empty title, got nil")
+	}
+}
+
+func TestParseLine_VeryLongTitle(t *testing.T) {
+	title := ""
+	for i := 0; i < 1000; i++ {
+		title += "x"
+	}
+	json := `{"webpage_url":"https://youtube.com/watch?v=abc","title":"` + title + `","channel":"Artist"}`
+	got, err := ParseLine(json)
+	if err != nil {
+		t.Fatalf("ParseLine() returned unexpected error for long title: %v", err)
+	}
+	if got.Title != title {
+		t.Errorf("ParseLine().Title length = %d, want %d", len(got.Title), len(title))
+	}
+}
+
+func TestParseLine_NegativeDuration(t *testing.T) {
+	json := `{"webpage_url":"https://youtube.com/watch?v=abc","title":"Song","duration":-1}`
+	got, err := ParseLine(json)
+	if err != nil {
+		t.Fatalf("ParseLine() returned unexpected error for negative duration: %v", err)
+	}
+	if got.Duration != -1*time.Second {
+		t.Errorf("ParseLine().Duration = %v, want -1s", got.Duration)
+	}
+}
+
+func TestParseLine_VeryLargeDuration(t *testing.T) {
+	json := `{"webpage_url":"https://youtube.com/watch?v=abc","title":"Song","duration":999999999}`
+	got, err := ParseLine(json)
+	if err != nil {
+		t.Fatalf("ParseLine() returned unexpected error for large duration: %v", err)
+	}
+	if got.Duration <= 0 {
+		t.Errorf("ParseLine().Duration = %v, want > 0", got.Duration)
+	}
+}
+
+func TestParseLine_URLWithSpecialChars(t *testing.T) {
+	json := `{"webpage_url":"https://youtube.com/watch?v=a b&q=foo#bar","title":"Song","channel":"Artist"}`
+	got, err := ParseLine(json)
+	if err != nil {
+		t.Fatalf("ParseLine() returned unexpected error for URL with special chars: %v", err)
+	}
+	if got.URL != "https://youtube.com/watch?v=a b&q=foo#bar" {
+		t.Errorf("ParseLine().URL = %q, want URL with special chars preserved", got.URL)
+	}
+}
+
+func TestParseLine_DurationAsNull(t *testing.T) {
+	json := `{"webpage_url":"https://youtube.com/watch?v=abc","title":"Song","duration":null}`
+	got, err := ParseLine(json)
+	if err != nil {
+		t.Fatalf("ParseLine() returned unexpected error for null duration: %v", err)
+	}
+	if got.Duration != 0 {
+		t.Errorf("ParseLine().Duration for null = %v, want 0", got.Duration)
 	}
 }

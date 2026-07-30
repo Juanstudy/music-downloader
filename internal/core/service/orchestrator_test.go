@@ -222,6 +222,45 @@ func TestDownloadTrack_OutputPathSet(t *testing.T) {
 	}
 }
 
+func TestDownloadTrack_ContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	media := defaultTrack
+	result := ports.DownloadResult{
+		Media:      media,
+		OutputPath: "/tmp/music/test.mp3",
+	}
+	downloader := newMockDownloader(result, nil)
+	orch := NewOrchestrator(&mockSearcher{}, downloader)
+
+	_, err := orch.DownloadTrack(ctx, media, "/tmp/music")
+	if err == nil {
+		t.Fatal("expected error from cancelled context, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want context.Canceled", err)
+	}
+}
+
+func TestDownloadTrack_EmptyOutputDir(t *testing.T) {
+	media := defaultTrack
+	result := ports.DownloadResult{
+		Media:      media,
+		OutputPath: "test.mp3",
+	}
+	downloader := newMockDownloader(result, nil)
+	orch := NewOrchestrator(&mockSearcher{}, downloader)
+
+	got, err := orch.DownloadTrack(context.Background(), media, "")
+	if err != nil {
+		t.Fatalf("DownloadTrack with empty output dir returned unexpected error: %v", err)
+	}
+	if got.Status != domain.StatusDone {
+		t.Errorf("Status = %v, want StatusDone", got.Status)
+	}
+}
+
 func TestDownloadTrack_DownloaderError(t *testing.T) {
 	media := defaultTrack
 	wantErr := errors.New("disk full")

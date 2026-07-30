@@ -77,6 +77,37 @@ func TestCheck_CollectsAllMissing(t *testing.T) {
 	}
 }
 
+func TestCheck_MixedResults(t *testing.T) {
+	// Set PATH to dir with only one of two binaries
+	dir := t.TempDir()
+	path := filepath.Join(dir, "yt-dlp")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("PATH", dir)
+
+	c := NewChecker("yt-dlp", "ffmpeg")
+	errs := c.Check(context.Background())
+	if len(errs) != 1 {
+		t.Fatalf("Check() returned %d errors, want 1 (only ffmpeg missing)", len(errs))
+	}
+	if errs[0].Binary != "ffmpeg" {
+		t.Errorf("Check()[0].Binary = %q, want %q", errs[0].Binary, "ffmpeg")
+	}
+}
+
+func TestCheck_ContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	c := NewChecker("yt-dlp")
+	errs := c.Check(ctx)
+	// Check is expected to return errors even with cancelled context
+	// since exec.LookPath is not context-aware
+	_ = errs // no specific assertion; just should not panic
+}
+
 func TestCheck_NoBinariesConfigured(t *testing.T) {
 	c := NewChecker()
 	errs := c.Check(context.Background())

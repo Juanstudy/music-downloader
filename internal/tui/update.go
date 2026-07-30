@@ -182,6 +182,9 @@ func (m Model) handleResolveDone(msg resolveFinishedMsg) (tea.Model, tea.Cmd) {
 	m.tracks = msg.tracks
 	m.cursor = 0
 	m.scroll = 0
+	m.filter = ""
+	m.isFiltering = false
+	m.filterInput.SetValue("")
 	m.resolveErr = ""
 
 	// Single track: auto-select and start download
@@ -330,13 +333,7 @@ func (m Model) handlePlaylistFilterInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.isFiltering = false
 			m.filterInput.Blur()
 			// Clamp cursor to the new filtered list
-			tracks := m.filteredTracks()
-			if m.cursor >= len(tracks) {
-				m.cursor = len(tracks) - 1
-			}
-			if m.cursor < 0 {
-				m.cursor = 0
-			}
+			m.clampCursor(len(m.filteredTracks()))
 			return m, nil
 		}
 	}
@@ -346,15 +343,23 @@ func (m Model) handlePlaylistFilterInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.filterInput, cmd = m.filterInput.Update(msg)
 	// Update filter text in real-time so filteredTracks() stays in sync
 	m.filter = m.filterInput.Value()
-	tracks := m.filteredTracks()
-	if m.cursor >= len(tracks) {
-		m.cursor = len(tracks) - 1
+	m.clampCursor(len(m.filteredTracks()))
+	m.ensureVisible()
+	return m, cmd
+}
+
+// clampCursor ensures cursor stays within valid bounds for the given track count.
+func (m *Model) clampCursor(trackCount int) {
+	if trackCount == 0 {
+		m.cursor = 0
+		return
+	}
+	if m.cursor >= trackCount {
+		m.cursor = trackCount - 1
 	}
 	if m.cursor < 0 {
 		m.cursor = 0
 	}
-	m.ensureVisible()
-	return m, cmd
 }
 
 func (m Model) ensureVisible() {
@@ -480,6 +485,9 @@ func (m Model) handleDoneKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.succeeded = 0
 		m.failed = 0
 		m.failedTracks = nil
+		m.filter = ""
+		m.isFiltering = false
+		m.filterInput.SetValue("")
 		m.resolveErr = ""
 		m.Input.SetValue("")
 		m.Input.Focus()

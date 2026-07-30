@@ -49,6 +49,13 @@ func (o *Orchestrator) ResolveTrack(ctx context.Context, url string) ([]domain.M
 
 // DownloadTrack downloads a single track and returns the updated Media.
 func (o *Orchestrator) DownloadTrack(ctx context.Context, media domain.Media, outputDir string) (domain.Media, error) {
+	// Check context cancellation before delegating.
+	if ctx.Err() != nil {
+		media.Status = domain.StatusFailed
+		media.Error = ctx.Err().Error()
+		return media, fmt.Errorf("download cancelled: %w", ctx.Err())
+	}
+
 	result, err := o.downloader.Download(ctx, media, outputDir)
 	if err != nil {
 		media.Status = domain.StatusFailed
