@@ -15,13 +15,17 @@ stack:
 
 testing:
   runner:
-    command: go test ./...
+    command: go test -short ./...
     framework: Go test (standard library)
-    available: false
-    reason: No go.mod initialized yet
+    available: true
+    reason: go.mod initialized (go 1.26.3); unit tests run with -short
   layers:
     unit: { available: true, tool: go test }
-    integration: { available: false, tool: null }
+    integration:
+      {
+        available: true,
+        tool: go test (no -short; requires yt-dlp + ffmpeg + network),
+      }
     e2e: { available: false, tool: null }
   coverage:
     available: true
@@ -31,8 +35,8 @@ testing:
     formatter: { available: true, command: gofmt }
     type_checker: { available: true, command: go build ./... }
 
-strict_tdd: false
-strict_tdd_reason: No test runner detected — go.mod not initialized. Enable when module is set up.
+strict_tdd: true
+strict_tdd_reason: go.mod initialized and go test works; session harness enforces Strict TDD.
 
 phases:
   proposal:

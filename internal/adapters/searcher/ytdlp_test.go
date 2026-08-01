@@ -71,3 +71,22 @@ func TestSearcher_YouTubeMusicSource(t *testing.T) {
 		t.Errorf("expected youtube source, got %q", result.Source)
 	}
 }
+
+func TestSearchArgs_OptionTerminatorBeforeURL(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{name: "regular URL", url: "https://youtube.com/watch?v=dQw4w9WgXcQ"},
+		{name: "option-looking input", url: "--config-location=http://evil.example/x"},
+		{name: "dash-prefixed input", url: "--output"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := searchArgs(tt.url)
+			if len(args) < 2 || args[len(args)-2] != "--" || args[len(args)-1] != tt.url {
+				t.Fatalf("expected \"--\" immediately before the URL %q, got tail: %v", tt.url, args[len(args)-2:])
+			}
+		})
+	}
+}

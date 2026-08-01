@@ -1302,3 +1302,83 @@ func TestConfig_EnterSaveFailureNonFatal(t *testing.T) {
 		t.Errorf("expected stay on ScreenConfig (%d), got %d", ScreenConfig, updated.Screen)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 25. URL-aware searcher routing (ARF-001) + spotify: gate (ARF-002, ARF-008)
+// ---------------------------------------------------------------------------
+
+func TestSelectedSearcherRouting(t *testing.T) {
+	yt := &stubSearcher{}
+	sp := &stubSearcher{}
+	tests := []struct {
+		name       string
+		mode       SourceMode
+		url        string
+		configured bool
+		want       ports.Searcher
+	}{
+		// case 1 (issue #19): Auto + YouTube Music URL + configured → yt
+		{name: "auto youtube url configured", mode: SourceAuto, url: "https://music.youtube.com/watch?v=...", configured: true, want: yt},
+		// case 2: Auto + open.spotify.com/track + configured → sp
+		{name: "auto spotify track configured", mode: SourceAuto, url: "https://open.spotify.com/track/{id}", configured: true, want: sp},
+		// case 3: Auto + spotify: URI + configured → sp
+		{name: "auto spotify uri configured", mode: SourceAuto, url: "spotify:track:{id}", configured: true, want: sp},
+		// case 4: Auto + Spotify URL, no credentials → yt
+		{name: "auto spotify url no creds", mode: SourceAuto, url: "https://open.spotify.com/track/{id}", configured: false, want: yt},
+		// case 5: Auto + non-Spotify URL, no credentials → yt
+		{name: "auto youtube url no creds", mode: SourceAuto, url: "https://music.youtube.com/watch?v=...", configured: false, want: yt},
+		// case 6: SourceYouTube ignores the URL → yt (both Spotify URL and URI forms)
+		{name: "youtube mode spotify url", mode: SourceYouTube, url: "https://open.spotify.com/track/{id}", configured: true, want: yt},
+		{name: "youtube mode spotify uri", mode: SourceYouTube, url: "spotify:track:{id}", configured: true, want: yt},
+		// case 7a: SourceSpotify + configured → sp
+		{name: "spotify mode configured", mode: SourceSpotify, url: "https://music.youtube.com/watch?v=...", configured: true, want: sp},
+		// case 7b: SourceSpotify + not configured → yt
+		{name: "spotify mode no creds", mode: SourceSpotify, url: "https://open.spotify.com/track/{id}", configured: false, want: yt},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := Model{sourceMode: tt.mode, searcher: yt}
+			if tt.configured {
+				m.spotifySearcher = sp
+			}
+			if got := m.selectedSearcher(tt.url); got != tt.want {
+				t.Errorf("selectedSearcher(%q) = %v, want %v", tt.url, got, tt.want)
+			}
+		})
+	}
+}
+
+// spotify: URI accepted — no "That doesn't look like a URL" (ARF-002)
+func TestURLMode_SpotifyURIAccepted(t *testing.T) {
+	m := Model{Screen: ScreenInput, Ready: true, searchMode: SearchModeURL, Input: newInput()}
+	m.Input.SetValue("spotify:track:4iV5W9uYEdYUVa79Axb7Rh")
+
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenResolving {
+		t.Errorf("expected ScreenResolving (%d), got %d", ScreenResolving, updated.Screen)
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd for spotify: URI resolve")
+	}
+	if strings.Contains(updated.inputErr, "That doesn't look like a URL") {
+		t.Errorf("spotify: URI must not be rejected, got inputErr %q", updated.inputErr)
+	}
+}
+
+// any other scheme stays blocked (ARF-008)
+func TestURLMode_OtherSchemeStillBlocked(t *testing.T) {
+	m := Model{Screen: ScreenInput, Ready: true, searchMode: SearchModeURL, Input: newInput()}
+	m.Input.SetValue("itunes:track:123")
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenInput {
+		t.Errorf("expected stay on ScreenInput (%d), got %d", ScreenInput, updated.Screen)
+	}
+	if !strings.Contains(updated.inputErr, "That doesn't look like a URL") {
+		t.Errorf("expected inputErr to contain \"That doesn't look like a URL\", got %q", updated.inputErr)
+	}
+}

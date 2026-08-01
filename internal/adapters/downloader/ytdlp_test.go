@@ -287,3 +287,16 @@ func TestAudioBitrateConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestBuildArgs_OptionTerminatorBeforeURL(t *testing.T) {
+	outputDir := t.TempDir()
+	media := domain.Media{URL: "https://youtube.com/watch?v=abc", Title: "T", Artist: "A"}
+
+	args := buildArgs(media, outputDir, "")
+
+	// The "--" option terminator must directly precede the URL so arbitrary
+	// pasted input starting with "-" is treated as a URL, never as an option.
+	if len(args) < 2 || args[len(args)-2] != "--" || args[len(args)-1] != media.URL {
+		t.Fatalf("expected \"--\" immediately before the URL, got tail: %v", args[len(args)-2:])
+	}
+}

@@ -25,13 +25,7 @@ func NewSearcher() *Searcher {
 // Each JSON line is parsed via ParseLine into a domain.Media.
 // Non-parseable lines are silently skipped.
 func (s *Searcher) Search(ctx context.Context, url string) (ports.SearchResult, error) {
-	args := []string{
-		"--flat-playlist",
-		"--dump-json",
-		"--ignore-errors",
-		"--no-warnings",
-		url,
-	}
+	args := searchArgs(url)
 
 	cmd := exec.CommandContext(ctx, s.binary, args...)
 	stdout, err := cmd.StdoutPipe()
@@ -81,6 +75,21 @@ func (s *Searcher) Search(ctx context.Context, url string) (ports.SearchResult, 
 	}
 
 	return ports.SearchResult{Tracks: tracks, Source: sourceFromURL(url)}, nil
+}
+
+// searchArgs returns the yt-dlp invocation arguments for Search. The trailing
+// "--" ends option parsing so arbitrary pasted input starting with "-" is
+// treated as a URL, never as a yt-dlp option (option injection). Pure function
+// (no receiver, no I/O) — unit-testable without yt-dlp.
+func searchArgs(url string) []string {
+	return []string{
+		"--flat-playlist",
+		"--dump-json",
+		"--ignore-errors",
+		"--no-warnings",
+		"--",
+		url,
+	}
 }
 
 func sourceFromURL(url string) string {
