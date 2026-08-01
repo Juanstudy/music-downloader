@@ -24,6 +24,7 @@ var helpContent = []keyBinding{
 	{"s", "Toggle search mode"},
 	{"q", "Quit"},
 	{"?", "Toggle help"},
+	{"c", "Configure quality"},
 }
 
 // helpView renders the help overlay with all available keybindings.

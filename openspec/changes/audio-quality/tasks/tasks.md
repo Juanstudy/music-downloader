@@ -264,8 +264,8 @@ PR#2 (UI+entry, ~365 lines):
 
 **Acceptance:**
 
-- [ ] `ScreenConfig` constant + the five config fields exist on `Model`; `NewModel` sets the `configPath`/`saveConfig` seams. <!-- sdd-owner: implementation -->
-- [ ] `go test ./internal/tui/...` green with zero existing-test changes. <!-- sdd-owner: implementation -->
+- [x] `ScreenConfig` constant + the five config fields exist on `Model`; `NewModel` sets the `configPath`/`saveConfig` seams. <!-- sdd-owner: implementation -->
+- [x] `go test ./internal/tui/...` green with zero existing-test changes. <!-- sdd-owner: implementation -->
 
 **Estimated lines:** ~12. **Dependencies:** PR#1. **Risk:** Low.
 
@@ -286,8 +286,8 @@ PR#2 (UI+entry, ~365 lines):
 
 **Acceptance:**
 
-- [ ] AQ-008/AQ-009/AQ-010/AQ-011 scenarios covered via `Model{}` literals; `saveConfig` spy used for the no-write assertion. <!-- sdd-owner: implementation -->
-- [ ] New tests red before T2.3; all pre-existing tests unaffected. <!-- sdd-owner: implementation -->
+- [x] AQ-008/AQ-009/AQ-010/AQ-011 scenarios covered via `Model{}` literals; `saveConfig` spy used for the no-write assertion. <!-- sdd-owner: implementation -->
+- [x] New tests red before T2.3; all pre-existing tests unaffected. <!-- sdd-owner: implementation -->
 
 **Estimated lines:** ~90. **Dependencies:** T2.1. **Risk:** Medium (key-routing edge cases: Input and filter typing).
 
@@ -308,8 +308,8 @@ PR#2 (UI+entry, ~365 lines):
 
 **Acceptance:**
 
-- [ ] `c` opens Config from the four screens; never intercepted on Input or while filtering. <!-- sdd-owner: implementation -->
-- [ ] `j/k` bounded, `Esc` returns without writes; `q`/`?` still handled globally on Config. <!-- sdd-owner: implementation -->
+- [x] `c` opens Config from the four screens; never intercepted on Input or while filtering. <!-- sdd-owner: implementation -->
+- [x] `j/k` bounded, `Esc` returns without writes; `q`/`?` still handled globally on Config. <!-- sdd-owner: implementation -->
 
 **Estimated lines:** ~40. **Dependencies:** T2.2. **Risk:** Medium.
 
@@ -328,8 +328,8 @@ PR#2 (UI+entry, ~365 lines):
 
 **Acceptance:**
 
-- [ ] AQ-012 asserts in-session value + downloader update + real file write (in `t.TempDir()`) + return to `PrevScreen`. <!-- sdd-owner: implementation -->
-- [ ] AQ-013 asserts non-fatal path: value applied, warning set, no quit. <!-- sdd-owner: implementation -->
+- [x] AQ-012 asserts in-session value + downloader update + real file write (in `t.TempDir()`) + return to `PrevScreen`. <!-- sdd-owner: implementation -->
+- [x] AQ-013 asserts non-fatal path: value applied, warning set, no quit. <!-- sdd-owner: implementation -->
 
 **Estimated lines:** ~75. **Dependencies:** T2.1, PR#1 (T1.6). **Risk:** Medium.
 
@@ -348,8 +348,8 @@ PR#2 (UI+entry, ~365 lines):
 
 **Acceptance:**
 
-- [ ] Confirm applies mid-session (model + downloader), persists, returns to `PrevScreen` on success. <!-- sdd-owner: implementation -->
-- [ ] Save failure keeps the value, shows `configWarn`, never crashes or quits. <!-- sdd-owner: implementation -->
+- [x] Confirm applies mid-session (model + downloader), persists, returns to `PrevScreen` on success. <!-- sdd-owner: implementation -->
+- [x] Save failure keeps the value, shows `configWarn`, never crashes or quits. <!-- sdd-owner: implementation -->
 
 **Estimated lines:** ~20. **Dependencies:** T2.4. **Risk:** Low.
 
@@ -370,8 +370,8 @@ PR#2 (UI+entry, ~365 lines):
 
 **Acceptance:**
 
-- [ ] `main()` loads quality (default 320k when absent/malformed), injects it into the downloader and the TUI. <!-- sdd-owner: implementation -->
-- [ ] `go build ./cmd/music-dl/` exits 0; Spotify wiring block untouched. <!-- sdd-owner: implementation -->
+- [x] `main()` loads quality (default 320k when absent/malformed), injects it into the downloader and the TUI. <!-- sdd-owner: implementation -->
+- [x] `go build ./cmd/music-dl/` exits 0; Spotify wiring block untouched. <!-- sdd-owner: implementation -->
 
 **Estimated lines:** ~26. **Dependencies:** PR#1, T2.1. **Risk:** Low.
 
@@ -390,8 +390,8 @@ PR#2 (UI+entry, ~365 lines):
 
 **Acceptance:**
 
-- [ ] AQ-014 rendering cases assert options + cursor marker + current quality + footer hints. <!-- sdd-owner: implementation -->
-- [ ] AQ-015 help test asserts the `c` entry in the global overlay. <!-- sdd-owner: implementation -->
+- [x] AQ-014 rendering cases assert options + cursor marker + current quality + footer hints. <!-- sdd-owner: implementation -->
+- [x] AQ-015 help test asserts the `c` entry in the global overlay. <!-- sdd-owner: implementation -->
 
 **Estimated lines:** ~55. **Dependencies:** T2.1. **Risk:** Low.
 
@@ -411,8 +411,8 @@ PR#2 (UI+entry, ~365 lines):
 
 **Acceptance:**
 
-- [ ] Config view renders options, cursor marker, current quality, footer; `View()` dispatches to it. <!-- sdd-owner: implementation -->
-- [ ] Global help overlay lists `c` on every screen. <!-- sdd-owner: implementation -->
+- [x] Config view renders options, cursor marker, current quality, footer; `View()` dispatches to it. <!-- sdd-owner: implementation -->
+- [x] Global help overlay lists `c` on every screen. <!-- sdd-owner: implementation -->
 
 **Estimated lines:** ~39. **Dependencies:** T2.7. **Risk:** Low.
 
@@ -428,7 +428,7 @@ PR#2 (UI+entry, ~365 lines):
 
 **Acceptance:**
 
-- [ ] README lists the `c` → Config screen binding; roadmap shows lossy delivered and lossless still open. <!-- sdd-owner: implementation -->
+- [x] README lists the `c` → Config screen binding; roadmap shows lossy delivered and lossless still open. <!-- sdd-owner: implementation -->
 
 **Estimated lines:** ~8. **Dependencies:** none. **Risk:** Low.
 
@@ -447,8 +447,8 @@ PR#2 (UI+entry, ~365 lines):
 
 **Acceptance:**
 
-- [ ] `go build ./cmd/music-dl/ && go vet ./... && go test ./...` green. <!-- sdd-owner: implementation -->
-- [ ] Spotify package untouched (AQ-019); port + `DownloadTrack` signatures unchanged (AQ-018); URL-mode flow regression-free (AQ-020). <!-- sdd-owner: implementation -->
+- [x] `go build ./cmd/music-dl/ && go vet ./... && go test ./...` green. <!-- sdd-owner: implementation -->
+- [x] Spotify package untouched (AQ-019); port + `DownloadTrack` signatures unchanged (AQ-018); URL-mode flow regression-free (AQ-020). <!-- sdd-owner: implementation -->
 
 **Estimated lines:** —. **Dependencies:** T2.1-T2.9. **Risk:** Low.
 

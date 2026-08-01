@@ -4,6 +4,7 @@ package tui
 import (
 	"context"
 
+	"github.com/Juanstudy/music-downloader/internal/config"
 	"github.com/Juanstudy/music-downloader/internal/core/domain"
 	"github.com/Juanstudy/music-downloader/internal/core/ports"
 	"github.com/Juanstudy/music-downloader/internal/core/service"
@@ -21,6 +22,7 @@ const (
 	ScreenPlaylist
 	ScreenDownloading
 	ScreenDone
+	ScreenConfig
 )
 
 // SourceMode controls which search backend is active.
@@ -91,6 +93,13 @@ type Model struct {
 	// Output tracking
 	inputErr string
 
+	// Audio quality config (sixth screen)
+	audioQuality  string                                     // current effective quality (e.g. "192k")
+	qualityCursor int                                        // cursor over config.ValidQualities()
+	configWarn    string                                     // non-fatal save warning shown in the config view
+	configPath    string                                     // config file path (config.ConfigPath())
+	saveConfig    func(path string, cfg config.Config) error // persistence seam (config.SaveConfig)
+
 	Err error // fatal error to display before quitting
 }
 
@@ -101,7 +110,8 @@ func (m Model) Init() tea.Cmd {
 
 // NewModel creates the initial application model with hexagonal wiring.
 // youtubeSearcher is required; spotifySearcher is optional (pass nil when unavailable).
-func NewModel(orch *service.Orchestrator, youtubeSearcher, spotifySearcher ports.Searcher, querySearcher ports.QuerySearcher, outputDir string) Model {
+// audioQuality is the initial effective quality (config.DefaultQuality when no config).
+func NewModel(orch *service.Orchestrator, youtubeSearcher, spotifySearcher ports.Searcher, querySearcher ports.QuerySearcher, outputDir string, audioQuality string) Model {
 	ti := textinput.New()
 	ti.Placeholder = "https://music.youtube.com/..."
 	ti.Focus()
@@ -128,9 +138,12 @@ func NewModel(orch *service.Orchestrator, youtubeSearcher, spotifySearcher ports
 		searchMode:      SearchModeURL,
 		sourceMode:      SourceAuto,
 		outputDir:       outputDir,
+		audioQuality:    audioQuality,
 		Input:           ti,
 		Spinner:         s,
 		filterInput:     fi,
+		configPath:      config.ConfigPath(),
+		saveConfig:      config.SaveConfig,
 		cursor:          0,
 		scroll:          0,
 	}
