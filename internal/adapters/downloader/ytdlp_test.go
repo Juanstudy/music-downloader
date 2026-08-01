@@ -134,8 +134,8 @@ func TestBuildArgs_NoBitrate(t *testing.T) {
 
 	args := buildArgs(media, outputDir, "")
 
-	if idx := argsIndex(args, "--audio-bitrate"); idx != -1 {
-		t.Errorf("args contain --audio-bitrate at %d with empty bitrate: %v", idx, args)
+	if idx := argsIndex(args, "--audio-quality"); idx != -1 {
+		t.Errorf("args contain --audio-quality at %d with empty bitrate: %v", idx, args)
 	}
 
 	if idx := argsIndex(args, "-x"); idx == -1 {
@@ -169,8 +169,8 @@ func TestBuildArgs_BitratePosition(t *testing.T) {
 	if args[idx+1] != "mp3" {
 		t.Fatalf("args[%d] = %q, want \"mp3\" after --audio-format", idx+1, args[idx+1])
 	}
-	if args[idx+2] != "--audio-bitrate" || args[idx+3] != "192k" {
-		t.Errorf("--audio-bitrate 192k not immediately after '--audio-format mp3': %v", args)
+	if args[idx+2] != "--audio-quality" || args[idx+3] != "192k" {
+		t.Errorf("--audio-quality 192k not immediately after '--audio-format mp3': %v", args)
 	}
 }
 
@@ -215,12 +215,12 @@ func TestWithAudioBitrate_EachLevel(t *testing.T) {
 			d := NewDownloader(WithAudioBitrate(tt.q))
 			args := buildArgs(media, outputDir, d.audioBitrate)
 
-			idx := argsIndex(args, "--audio-bitrate")
+			idx := argsIndex(args, "--audio-quality")
 			if idx == -1 {
-				t.Fatalf("args missing --audio-bitrate for %q: %v", tt.q, args)
+				t.Fatalf("args missing --audio-quality for %q: %v", tt.q, args)
 			}
 			if args[idx+1] != tt.q {
-				t.Errorf("--audio-bitrate value = %q, want %q", args[idx+1], tt.q)
+				t.Errorf("--audio-quality value = %q, want %q", args[idx+1], tt.q)
 			}
 		})
 	}
@@ -236,8 +236,8 @@ func TestNewDownloader_NoOption(t *testing.T) {
 	}
 
 	args := buildArgs(media, outputDir, d.audioBitrate)
-	if argsIndex(args, "--audio-bitrate") != -1 {
-		t.Errorf("NewDownloader() without options emits --audio-bitrate: %v", args)
+	if argsIndex(args, "--audio-quality") != -1 {
+		t.Errorf("NewDownloader() without options emits --audio-quality: %v", args)
 	}
 }
 
@@ -251,10 +251,10 @@ func TestSetAudioBitrate_MidSession(t *testing.T) {
 	d.SetAudioBitrate("320k")
 	after := buildArgs(media, outputDir, d.audioBitrate)
 
-	if idx := argsIndex(before, "--audio-bitrate"); idx == -1 || before[idx+1] != "128k" {
+	if idx := argsIndex(before, "--audio-quality"); idx == -1 || before[idx+1] != "128k" {
 		t.Errorf("before setter args should use 128k: %v", before)
 	}
-	if idx := argsIndex(after, "--audio-bitrate"); idx == -1 || after[idx+1] != "320k" {
+	if idx := argsIndex(after, "--audio-quality"); idx == -1 || after[idx+1] != "320k" {
 		t.Errorf("after setter args should use 320k: %v", after)
 	}
 }

@@ -20,7 +20,7 @@ type Downloader struct {
 
 	mu sync.Mutex // guards audioBitrate: downloads run in goroutines while the TUI may change quality mid-session
 
-	audioBitrate string // "" = no --audio-bitrate flag (pre-change behavior)
+	audioBitrate string // "" = no --audio-quality flag (pre-change behavior)
 }
 
 // Option configures a Downloader at construction time.
@@ -111,14 +111,15 @@ func (d *Downloader) bitrateSnapshot() string {
 }
 
 // buildArgs returns the yt-dlp invocation arguments. When bitrate is non-empty,
-// --audio-bitrate <bitrate> is inserted immediately after --audio-format mp3.
+// --audio-quality <bitrate> is inserted immediately after --audio-format mp3
+// (yt-dlp >=2024 removed --audio-bitrate; --audio-quality accepts e.g. 128K).
 // When bitrate is empty the args are byte-for-byte identical to the pre-change
 // invocation. Pure function (no receiver, no I/O) — unit-testable without yt-dlp.
 func buildArgs(media domain.Media, outputDir, bitrate string) []string {
 	outputTemplate := filepath.Join(outputDir, "%(artist)s - %(title)s.%(ext)s")
 	args := []string{"-x", "--audio-format", "mp3"}
 	if bitrate != "" {
-		args = append(args, "--audio-bitrate", bitrate)
+		args = append(args, "--audio-quality", bitrate)
 	}
 	args = append(args,
 		"--embed-metadata",
