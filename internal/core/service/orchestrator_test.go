@@ -25,10 +25,17 @@ func (m *mockSearcher) Search(ctx context.Context, url string) (ports.SearchResu
 
 type mockDownloader struct {
 	downloadFunc func(ctx context.Context, media domain.Media, outputDir string) (ports.DownloadResult, error)
+	audioBitrate string
 }
 
 func (m *mockDownloader) Download(ctx context.Context, media domain.Media, outputDir string) (ports.DownloadResult, error) {
 	return m.downloadFunc(ctx, media, outputDir)
+}
+
+// SetAudioBitrate records the value so the orchestrator passthrough can be
+// asserted (AQ-007).
+func (m *mockDownloader) SetAudioBitrate(q string) {
+	m.audioBitrate = q
 }
 
 // ----- test defaults -----
@@ -279,5 +286,18 @@ func TestDownloadTrack_DownloaderError(t *testing.T) {
 	}
 	if got.Error == "" {
 		t.Error("Media.Error is empty, expected error message")
+	}
+}
+
+// ----- SetAudioQuality (AQ-007) -----
+
+func TestSetAudioQualityForwardsToDownloader(t *testing.T) {
+	mock := &mockDownloader{}
+	orch := NewOrchestrator(&mockSearcher{}, mock)
+
+	orch.SetAudioQuality("192k")
+
+	if mock.audioBitrate != "192k" {
+		t.Errorf("downloader audioBitrate = %q, want %q", mock.audioBitrate, "192k")
 	}
 }

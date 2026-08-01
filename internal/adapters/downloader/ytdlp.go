@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/Juanstudy/music-downloader/internal/core/domain"
 	"github.com/Juanstudy/music-downloader/internal/core/ports"
@@ -16,12 +17,47 @@ import (
 // Downloader invokes yt-dlp to download a single track as MP3.
 type Downloader struct {
 	binary string
+
+	mu sync.Mutex // guards audioBitrate: downloads run in goroutines while the TUI may change quality mid-session
+
+	audioBitrate string // "" = no --audio-bitrate flag (pre-change behavior)
+}
+
+// Option configures a Downloader at construction time.
+type Option func(*Downloader)
+
+// WithAudioBitrate sets the MP3 bitrate used for subsequent downloads.
+func WithAudioBitrate(q string) Option {
+	return func(d *Downloader) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		d.audioBitrate = q
+	}
 }
 
 // NewDownloader creates a Downloader that uses the system yt-dlp binary.
-func NewDownloader() *Downloader {
-	return &Downloader{binary: "yt-dlp"}
+// Options are applied in order; calling with no options keeps the pre-change
+// no-bitrate behavior.
+func NewDownloader(opts ...Option) *Downloader {
+	d := &Downloader{binary: "yt-dlp"}
+	for _, opt := range opts {
+		opt(d)
+	}
+	return d
 }
+
+// SetAudioBitrate changes the bitrate used for subsequent downloads mid-session.
+// Safe to call while downloads are in flight: each download snapshots the value
+// once at start, so an in-flight download keeps the bitrate it was launched with.
+func (d *Downloader) SetAudioBitrate(q string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.audioBitrate = q
+}
+
+// var _ pins the Downloader implementation to the frozen Downloader port
+// (AQ-018 compile-time evidence).
+var _ ports.Downloader = (*Downloader)(nil)
 
 // Download downloads media to outputDir as an MP3 file with embedded metadata.
 // It returns a DownloadResult containing the resolved output file path.
@@ -30,17 +66,7 @@ func (d *Downloader) Download(ctx context.Context, media domain.Media, outputDir
 		return ports.DownloadResult{}, fmt.Errorf("create output dir: %w", err)
 	}
 
-	outputTemplate := filepath.Join(outputDir, "%(artist)s - %(title)s.%(ext)s")
-
-	args := []string{
-		"-x", "--audio-format", "mp3",
-		"--embed-metadata",
-		"--embed-thumbnail",
-		"--add-metadata",
-		"-o", outputTemplate,
-		"--no-warnings",
-		media.URL,
-	}
+	args := buildArgs(media, outputDir, d.bitrateSnapshot())
 
 	cmd := exec.CommandContext(ctx, d.binary, args...)
 	cmd.Stdout = io.Discard // prevent yt-dlp output from corrupting the TUI
@@ -74,6 +100,35 @@ func (d *Downloader) Download(ctx context.Context, media domain.Media, outputDir
 		Media:      media,
 		OutputPath: outputPath,
 	}, nil
+}
+
+// bitrateSnapshot returns the current bitrate value, safe for concurrent
+// access with SetAudioBitrate.
+func (d *Downloader) bitrateSnapshot() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.audioBitrate
+}
+
+// buildArgs returns the yt-dlp invocation arguments. When bitrate is non-empty,
+// --audio-bitrate <bitrate> is inserted immediately after --audio-format mp3.
+// When bitrate is empty the args are byte-for-byte identical to the pre-change
+// invocation. Pure function (no receiver, no I/O) — unit-testable without yt-dlp.
+func buildArgs(media domain.Media, outputDir, bitrate string) []string {
+	outputTemplate := filepath.Join(outputDir, "%(artist)s - %(title)s.%(ext)s")
+	args := []string{"-x", "--audio-format", "mp3"}
+	if bitrate != "" {
+		args = append(args, "--audio-bitrate", bitrate)
+	}
+	args = append(args,
+		"--embed-metadata",
+		"--embed-thumbnail",
+		"--add-metadata",
+		"-o", outputTemplate,
+		"--no-warnings",
+		media.URL,
+	)
+	return args
 }
 
 // sanitizeFilename replaces characters that are problematic in filenames.
