@@ -3,11 +3,15 @@ package tui
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/BurntSushi/toml"
+	"github.com/Juanstudy/music-downloader/internal/config"
 	"github.com/Juanstudy/music-downloader/internal/core/domain"
 	"github.com/Juanstudy/music-downloader/internal/core/ports"
+	"github.com/Juanstudy/music-downloader/internal/core/service"
 	"github.com/charmbracelet/bubbles/textinput"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -117,6 +121,40 @@ func newInput() textinput.Model {
 	ti := textinput.New()
 	ti.Focus()
 	return ti
+}
+
+func newFilterInput() textinput.Model {
+	fi := textinput.New()
+	fi.Focus()
+	return fi
+}
+
+// saveConfigSpy records invocations of the saveConfig seam for no-write assertions.
+type saveConfigSpy struct {
+	called int
+	path   string
+	cfg    config.Config
+}
+
+func (s *saveConfigSpy) save(path string, cfg config.Config) error {
+	s.called++
+	s.path = path
+	s.cfg = cfg
+	return nil
+}
+
+// recordingDownloader implements ports.Downloader and records the audio bitrate
+// applied via SetAudioBitrate so tests can assert mid-session quality changes.
+type recordingDownloader struct {
+	bitrate string
+}
+
+func (d *recordingDownloader) Download(ctx context.Context, media domain.Media, outputDir string) (ports.DownloadResult, error) {
+	return ports.DownloadResult{Media: media}, nil
+}
+
+func (d *recordingDownloader) SetAudioBitrate(q string) {
+	d.bitrate = q
 }
 
 // ---------------------------------------------------------------------------
@@ -1028,5 +1066,239 @@ func TestCtrlCOnResolvingQuits(t *testing.T) {
 
 	if cmd == nil {
 		t.Error("expected non-nil quit cmd from resolving via Ctrl+C")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 23. Config screen — open/navigation (AQ-008…AQ-011)
+// ---------------------------------------------------------------------------
+
+func TestConfig_CFromScreens(t *testing.T) {
+	tests := []struct {
+		name       string
+		screen     Screen
+		expected   Screen
+		prevScreen Screen
+	}{
+		{"from resolving", ScreenResolving, ScreenConfig, ScreenResolving},
+		{"from playlist", ScreenPlaylist, ScreenConfig, ScreenPlaylist},
+		{"from downloading", ScreenDownloading, ScreenConfig, ScreenDownloading},
+		{"from done", ScreenDone, ScreenConfig, ScreenDone},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := Model{Screen: tt.screen, Ready: true}
+
+			m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+			updated := m2.(Model)
+
+			if updated.Screen != ScreenConfig {
+				t.Errorf("expected ScreenConfig (%d), got %d", ScreenConfig, updated.Screen)
+			}
+			if updated.PrevScreen != tt.prevScreen {
+				t.Errorf("expected PrevScreen=%d, got %d", tt.prevScreen, updated.PrevScreen)
+			}
+		})
+	}
+}
+
+func TestOpenConfig_CursorAtCurrentQuality(t *testing.T) {
+	m := Model{Screen: ScreenPlaylist, Ready: true, audioQuality: "192k"}
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenConfig {
+		t.Errorf("expected ScreenConfig (%d), got %d", ScreenConfig, updated.Screen)
+	}
+	if updated.qualityCursor != 1 {
+		t.Errorf("expected qualityCursor=1 (192k), got %d", updated.qualityCursor)
+	}
+}
+
+func TestConfig_COnInputTypes(t *testing.T) {
+	m := Model{Screen: ScreenInput, Ready: true, Input: newInput()}
+	m.Input.SetValue("music.youtube.com/watch")
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenInput {
+		t.Errorf("expected stay on ScreenInput, got %d", updated.Screen)
+	}
+	if !strings.HasSuffix(updated.Input.Value(), "c") {
+		t.Errorf("expected 'c' to be appended to input, got %q", updated.Input.Value())
+	}
+}
+
+func TestConfig_CInFilterTypes(t *testing.T) {
+	m := Model{Screen: ScreenPlaylist, Ready: true, isFiltering: true, filterInput: newFilterInput()}
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	updated := m2.(Model)
+
+	if !updated.isFiltering {
+		t.Error("expected filter to stay open after typing 'c'")
+	}
+	if updated.filter != "c" {
+		t.Errorf("expected filter text to gain 'c', got %q", updated.filter)
+	}
+}
+
+func TestConfig_JKMovesBounded(t *testing.T) {
+	m := Model{Screen: ScreenConfig, Ready: true, qualityCursor: 0}
+
+	// k above the first option stays at 0
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	if got := m2.(Model).qualityCursor; got != 0 {
+		t.Errorf("expected cursor=0 after k at first option, got %d", got)
+	}
+
+	// j moves down to 1
+	m3, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if got := m3.(Model).qualityCursor; got != 1 {
+		t.Errorf("expected cursor=1 after j, got %d", got)
+	}
+
+	// j again to 2, then j below the last option stays at 2
+	m4, _ := m3.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if got := m4.(Model).qualityCursor; got != 2 {
+		t.Errorf("expected cursor=2 after second j, got %d", got)
+	}
+	m5, _ := m4.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if got := m5.(Model).qualityCursor; got != 2 {
+		t.Errorf("expected cursor clamped at 2, got %d", got)
+	}
+}
+
+func TestConfig_EscCancelsWithoutWrite(t *testing.T) {
+	spy := &saveConfigSpy{}
+	m := Model{
+		Screen:        ScreenConfig,
+		PrevScreen:    ScreenPlaylist,
+		Ready:         true,
+		audioQuality:  "128k",
+		qualityCursor: 1,
+		configPath:    "/tmp/config.toml",
+		saveConfig:    spy.save,
+	}
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated := m2.(Model)
+
+	if updated.Screen != ScreenPlaylist {
+		t.Errorf("expected ScreenPlaylist (%d) after Esc, got %d", ScreenPlaylist, updated.Screen)
+	}
+	if updated.audioQuality != "128k" {
+		t.Errorf("expected audioQuality unchanged (128k), got %q", updated.audioQuality)
+	}
+	if spy.called != 0 {
+		t.Errorf("expected saveConfig not called on Esc, called %d times", spy.called)
+	}
+}
+
+func TestConfig_QStillQuits(t *testing.T) {
+	m := Model{Screen: ScreenConfig, Ready: true}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+
+	if cmd == nil {
+		t.Error("expected non-nil quit cmd on Config via q")
+	}
+}
+
+func TestConfig_HelpStillToggles(t *testing.T) {
+	m := Model{Screen: ScreenConfig, Ready: true, showHelp: false}
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	if !m2.(Model).showHelp {
+		t.Error("expected showHelp=true after ? on Config")
+	}
+
+	m3, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	if m3.(Model).showHelp {
+		t.Error("expected showHelp=false after second ? on Config")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 24. Config screen — confirm/persist/failure (AQ-012, AQ-013)
+// ---------------------------------------------------------------------------
+
+func TestConfig_EnterConfirmsAndPersists(t *testing.T) {
+	rec := &recordingDownloader{}
+	orch := service.NewOrchestrator(&stubSearcher{}, rec)
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+
+	m := Model{
+		Screen:        ScreenConfig,
+		PrevScreen:    ScreenPlaylist,
+		Ready:         true,
+		audioQuality:  "320k",
+		qualityCursor: 1, // 192k
+		orchestrator:  orch,
+		configPath:    configPath,
+		saveConfig:    config.SaveConfig,
+	}
+
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	if cmd != nil {
+		t.Errorf("expected nil cmd on confirm, got %v", cmd)
+	}
+	if updated.audioQuality != "192k" {
+		t.Errorf("expected audioQuality=192k, got %q", updated.audioQuality)
+	}
+	if rec.bitrate != "192k" {
+		t.Errorf("expected downloader bitrate 192k, got %q", rec.bitrate)
+	}
+	if updated.Screen != ScreenPlaylist {
+		t.Errorf("expected return to ScreenPlaylist (%d), got %d", ScreenPlaylist, updated.Screen)
+	}
+
+	var persisted config.Config
+	if _, err := toml.DecodeFile(configPath, &persisted); err != nil {
+		t.Fatalf("decode persisted config: %v", err)
+	}
+	if persisted.Quality.Value != "192k" {
+		t.Errorf("expected persisted [quality] value=192k, got %q", persisted.Quality.Value)
+	}
+}
+
+func TestConfig_EnterSaveFailureNonFatal(t *testing.T) {
+	rec := &recordingDownloader{}
+	orch := service.NewOrchestrator(&stubSearcher{}, rec)
+
+	m := Model{
+		Screen:        ScreenConfig,
+		PrevScreen:    ScreenPlaylist,
+		Ready:         true,
+		audioQuality:  "320k",
+		qualityCursor: 0, // 128k
+		orchestrator:  orch,
+		configPath:    "/tmp/config.toml",
+		saveConfig: func(string, config.Config) error {
+			return errors.New("disk full")
+		},
+	}
+
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated := m2.(Model)
+
+	if cmd != nil {
+		t.Errorf("expected no quit cmd on save failure, got %v", cmd)
+	}
+	if updated.audioQuality != "128k" {
+		t.Errorf("expected audioQuality=128k (still applied), got %q", updated.audioQuality)
+	}
+	if rec.bitrate != "128k" {
+		t.Errorf("expected downloader bitrate 128k, got %q", rec.bitrate)
+	}
+	if updated.configWarn == "" {
+		t.Error("expected configWarn to be set on save failure")
+	}
+	if updated.Screen != ScreenConfig {
+		t.Errorf("expected stay on ScreenConfig (%d), got %d", ScreenConfig, updated.Screen)
 	}
 }

@@ -15,7 +15,7 @@ Construido con [Go](https://go.dev) + [Bubble Tea](https://github.com/charmbrace
 ### Roadmap (post-MVP)
 
 - Búsqueda semántica por nombre/artista/álbum
-- Calidad configurable (128k, 320k, lossless)
+- Calidad lossless (FLAC)
 - Progress bars en descargas
 - Descarga concurrente
 - Cola persistente (sobrevive al cierre de la app)
@@ -23,6 +23,7 @@ Construido con [Go](https://go.dev) + [Bubble Tea](https://github.com/charmbrace
 
 ### Implementado recientemente
 
+- **Calidad de audio configurable** — MP3 a 128k / 192k / 320k, configurable en pantalla (tecla `c`), persistida en la config
 - **Spotify como fuente** — pegar URLs de Spotify, resuelve metadata y busca el track en YouTube automáticamente
 - Filtro `/` en la playlist (filtrado en tiempo real por título o artista)
 - Help overlay con `?`
@@ -127,6 +128,7 @@ Se abre una interfaz interactiva:
 | `Esc` | Retroceder / cancelar |
 | `q` | Salir |
 | `?` | Ayuda |
+| `c` | Configurar calidad de audio (128k / 192k / 320k) |
 
 ## Arquitectura
 

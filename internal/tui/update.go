@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Juanstudy/music-downloader/internal/config"
 	"github.com/Juanstudy/music-downloader/internal/core/domain"
 	"github.com/Juanstudy/music-downloader/internal/core/ports"
 	"github.com/Juanstudy/music-downloader/internal/core/service"
@@ -79,6 +80,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ScreenDone:
 		if km, ok := msg.(tea.KeyMsg); ok {
 			return m.handleDoneKeys(km)
+		}
+		return m, nil
+	case ScreenConfig:
+		if km, ok := msg.(tea.KeyMsg); ok {
+			return m.handleConfigKeys(km)
 		}
 		return m, nil
 	default:
@@ -278,6 +284,8 @@ func (m Model) handleResolvingKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.PrevScreen = ScreenResolving
 		m.Input.Focus()
 		return m, nil
+	case "c":
+		return m.openConfig()
 	}
 	return m, nil
 }
@@ -447,6 +455,9 @@ func (m Model) handlePlaylistKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q":
 			return m, tea.Quit
 
+		case "c":
+			return m.openConfig()
+
 		default:
 			return m, nil
 		}
@@ -571,6 +582,8 @@ func (m Model) handleDownloadingKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q":
 		return m, tea.Quit
+	case "c":
+		return m.openConfig()
 	}
 	return m, nil
 }
@@ -633,6 +646,80 @@ func (m Model) handleDoneKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.Input.SetValue("")
 		m.Input.Focus()
 		return m, nil
+	case "c":
+		return m.openConfig()
 	}
+	return m, nil
+}
+
+// ---------------------------------------------------------------------------
+// Config screen
+// ---------------------------------------------------------------------------
+
+// openConfig switches to the Config screen, remembering the origin screen and
+// placing the cursor on the current effective quality.
+func (m Model) openConfig() (tea.Model, tea.Cmd) {
+	m.PrevScreen = m.Screen
+	m.Screen = ScreenConfig
+	m.configWarn = ""
+	m.qualityCursor = indexOfQuality(m.audioQuality)
+	return m, nil
+}
+
+// indexOfQuality returns the index of q in config.ValidQualities(), or 0 when
+// q is not a valid level (never happens in practice: LoadConfig normalizes).
+func indexOfQuality(q string) int {
+	for i, v := range config.ValidQualities() {
+		if v == q {
+			return i
+		}
+	}
+	return 0
+}
+
+// handleConfigKeys navigates the Config screen. q/?/ctrl+c are handled globally
+// in Update() before screen routing, so they keep working here.
+func (m Model) handleConfigKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "j", "down":
+		if m.qualityCursor < len(config.ValidQualities())-1 {
+			m.qualityCursor++
+		}
+		return m, nil
+	case "k", "up":
+		if m.qualityCursor > 0 {
+			m.qualityCursor--
+		}
+		return m, nil
+	case "enter":
+		return m.confirmQuality()
+	case "esc":
+		m.Screen = m.PrevScreen
+		m.qualityCursor = 0
+		m.configWarn = ""
+		return m, nil
+	}
+	return m, nil
+}
+
+// confirmQuality applies the selected quality in-session, persists it, and
+// returns to the origin screen. Persistence failures are non-fatal: the
+// in-session value and the downloader stay updated, a warning is shown in the
+// config view, and the app keeps running (AQ-013).
+func (m Model) confirmQuality() (tea.Model, tea.Cmd) {
+	q := config.ValidQualities()[m.qualityCursor]
+	m.audioQuality = q
+	if m.orchestrator != nil {
+		m.orchestrator.SetAudioQuality(q)
+	}
+
+	if err := m.saveConfig(m.configPath, config.Config{Quality: config.Quality{Value: q}}); err != nil {
+		m.configWarn = fmt.Sprintf("Could not save config (%v). Applied for this session only.", err)
+		return m, nil // stay on ScreenConfig so the warning is visible
+	}
+
+	m.configWarn = ""
+	m.Screen = m.PrevScreen
+	m.qualityCursor = 0
 	return m, nil
 }

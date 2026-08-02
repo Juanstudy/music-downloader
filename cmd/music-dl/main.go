@@ -18,6 +18,7 @@ import (
 	"github.com/Juanstudy/music-downloader/internal/adapters/querysearcher"
 	"github.com/Juanstudy/music-downloader/internal/adapters/searcher"
 	"github.com/Juanstudy/music-downloader/internal/adapters/spotify"
+	"github.com/Juanstudy/music-downloader/internal/config"
 	"github.com/Juanstudy/music-downloader/internal/core/ports"
 	"github.com/Juanstudy/music-downloader/internal/core/service"
 	"github.com/Juanstudy/music-downloader/internal/tui"
@@ -45,10 +46,21 @@ func main() {
 	// Determine output directory (default: ~/Music/music-dl/).
 	outputDir := defaultOutputDir()
 
+	// Load the audio quality setting (defaults to 320k). A missing config file
+	// falls back silently; a malformed one logs a warning and keeps the default
+	// — both are non-fatal (AQ-003, AQ-016).
+	quality := config.DefaultQuality
+	qualityCfg, qualityErr := config.LoadConfig(config.ConfigPath())
+	if qualityErr != nil {
+		log.Printf("warning: failed to load config: %v", qualityErr)
+	} else {
+		quality = qualityCfg.Quality.Value
+	}
+
 	// Wire hexagonal dependencies.
 	searcherImpl := searcher.NewSearcher()
 	querySearcherImpl := querysearcher.NewQuerySearcher()
-	downloaderImpl := downloader.NewDownloader()
+	downloaderImpl := downloader.NewDownloader(downloader.WithAudioBitrate(quality))
 	orch := service.NewOrchestrator(searcherImpl, downloaderImpl)
 
 	// Optional: wire Spotify adapter if configured.
@@ -67,7 +79,7 @@ func main() {
 	}
 
 	// Start the Bubble Tea TUI program.
-	m := tui.NewModel(orch, searcherImpl, spotifySearcher, querySearcherImpl, outputDir)
+	m := tui.NewModel(orch, searcherImpl, spotifySearcher, querySearcherImpl, outputDir, quality)
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		log.Fatalf("error running TUI: %v", err)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Juanstudy/music-downloader/internal/config"
 	"github.com/Juanstudy/music-downloader/internal/core/domain"
 
 	"github.com/charmbracelet/lipgloss"
@@ -32,6 +33,8 @@ func (m Model) View() string {
 		content = m.renderDownloadingView()
 	case ScreenDone:
 		content = m.renderDoneView()
+	case ScreenConfig:
+		content = m.renderConfigView()
 	}
 
 	body := appStyle.Render(content)
@@ -86,6 +89,13 @@ func (m Model) renderFooter() string {
 		keys = append(keys,
 			keyStyle.Render("r")+" "+keyDescStyle.Render("new URL"),
 			keyStyle.Render("Esc")+" "+keyDescStyle.Render("quit"),
+		)
+	}
+	if m.Screen == ScreenConfig {
+		keys = append(keys,
+			keyStyle.Render("j/k")+" "+keyDescStyle.Render("move"),
+			keyStyle.Render("Enter")+" "+keyDescStyle.Render("confirm"),
+			keyStyle.Render("Esc")+" "+keyDescStyle.Render("back"),
 		)
 	}
 	return footerStyle.Render(strings.Join(keys, "  │  "))
@@ -353,6 +363,51 @@ func (m Model) renderDoneView() string {
 	}
 
 	b.WriteString(mutedStyle.Render("  Press r to start a new URL, Esc/q to quit."))
+	b.WriteString("\n\n")
+	b.WriteString(m.renderFooter())
+
+	return b.String()
+}
+
+// ---------------------------------------------------------------------------
+// Config screen
+// ---------------------------------------------------------------------------
+
+// renderConfigView lists the three quality options with a cursor/selection
+// indicator, the current effective quality, a save-failure warning when
+// present, and the footer hint.
+func (m Model) renderConfigView() string {
+	var b strings.Builder
+
+	b.WriteString(m.renderHeader("♪ music-dl — Configure Quality"))
+	b.WriteString("\n\n")
+
+	if m.configWarn != "" {
+		b.WriteString(warningStyle.Render("⚠ " + m.configWarn))
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString(mutedStyle.Render("Audio quality (yt-dlp never up-samples: a lower source stays lower)"))
+	b.WriteString("\n\n")
+
+	for i, q := range config.ValidQualities() {
+		marker := " "
+		cursor := "  "
+		if i == m.qualityCursor {
+			cursor = "▸"
+			marker = "●"
+		}
+		line := fmt.Sprintf("%s %s %s", cursor, marker, q)
+		if i == m.qualityCursor {
+			b.WriteString(selectedStyle.Render(line))
+		} else {
+			b.WriteString(line)
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render("Current: ") + emphStyle.Render(m.audioQuality))
 	b.WriteString("\n\n")
 	b.WriteString(m.renderFooter())
 
