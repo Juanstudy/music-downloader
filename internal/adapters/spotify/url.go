@@ -9,6 +9,32 @@ import (
 
 var spotifyIDPattern = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
 
+// IsSpotifyURL reports whether rawURL is hosted by Spotify. It answers the
+// host-level routing question only: true for URLs whose host is exactly
+// spotify.com or ends with .spotify.com (case-insensitive, per RFC 3986), and
+// for any spotify: URI regardless of entity. Entity-level validation
+// (track-only) stays in parseSpotifyURL, which is untouched.
+//
+// Deliberately stricter than parseSpotifyURL's internal host check: the exact
+// match plus the ".spotify.com" suffix reject lookalikes like evilspotify.com,
+// so a dubious URL routes to the general yt-dlp searcher, never to the
+// credentials-gated Spotify adapter.
+func IsSpotifyURL(rawURL string) bool {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return false
+	}
+	if strings.HasPrefix(rawURL, "spotify:") {
+		return true
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(parsed.Host)
+	return host == "spotify.com" || strings.HasSuffix(host, ".spotify.com")
+}
+
 // parseSpotifyURL extracts the entity type and ID from a Spotify URL.
 // It supports:
 //   - https://open.spotify.com/track/{id}

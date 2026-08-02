@@ -127,6 +127,9 @@ func buildArgs(media domain.Media, outputDir, bitrate string) []string {
 		"--add-metadata",
 		"-o", outputTemplate,
 		"--no-warnings",
+		// "--" ends option parsing so arbitrary pasted input starting with
+		// "-" is treated as a URL, never as a yt-dlp option (option injection).
+		"--",
 		media.URL,
 	)
 	return args

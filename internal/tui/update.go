@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Juanstudy/music-downloader/internal/adapters/spotify"
 	"github.com/Juanstudy/music-downloader/internal/config"
 	"github.com/Juanstudy/music-downloader/internal/core/domain"
 	"github.com/Juanstudy/music-downloader/internal/core/ports"
@@ -114,8 +115,8 @@ func (m Model) handleInputKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.searchMode == SearchModeQuery {
 				return m.startQuerySearch(val)
 			}
-			// URL mode: check if the input looks like a URL
-			if !strings.Contains(val, "://") {
+			// URL mode: check if the input looks like a URL or a spotify: URI
+			if !strings.Contains(val, "://") && !strings.HasPrefix(val, "spotify:") {
 				m.inputErr = "That doesn't look like a URL. Press 's' to switch to Search mode."
 				return m, nil
 			}
@@ -155,11 +156,12 @@ func (m Model) startResolve(url string) (tea.Model, tea.Cmd) {
 	m.Input.Blur()
 	// Bump ID so spinner resets on re-resolve
 	m.InputID++
-	return m, resolveCmd(m.selectedSearcher(), url)
+	return m, resolveCmd(m.selectedSearcher(url), url)
 }
 
-// selectedSearcher returns the Searcher that should be used based on the current source mode.
-func (m Model) selectedSearcher() ports.Searcher {
+// selectedSearcher returns the Searcher that should be used based on the
+// current source mode and, in Auto mode, the pasted URL/URI.
+func (m Model) selectedSearcher(url string) ports.Searcher {
 	switch m.sourceMode {
 	case SourceSpotify:
 		if m.spotifySearcher != nil {
@@ -169,8 +171,10 @@ func (m Model) selectedSearcher() ports.Searcher {
 	case SourceYouTube:
 		return m.searcher
 	case SourceAuto:
-		// Auto-detect by URL — default to Spotify when available
-		if m.spotifySearcher != nil {
+		// URL-driven auto-detection: Spotify only for a recognized Spotify
+		// URL/URI with credentials configured; everything else falls back to
+		// the general-purpose yt-dlp searcher.
+		if m.spotifySearcher != nil && spotify.IsSpotifyURL(url) {
 			return m.spotifySearcher
 		}
 		return m.searcher
