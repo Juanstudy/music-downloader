@@ -24,6 +24,20 @@ func NewOrchestrator(s ports.Searcher, d ports.Downloader) *Orchestrator {
 	}
 }
 
+// qualitySetter is the optional capability the downloader may expose. Kept
+// local so core does not import the adapter package and the port stays frozen.
+type qualitySetter interface {
+	SetAudioBitrate(string)
+}
+
+// SetAudioQuality forwards the audio quality to the downloader so subsequent
+// downloads use it. No-op when the injected downloader has no setter.
+func (o *Orchestrator) SetAudioQuality(q string) {
+	if s, ok := o.downloader.(qualitySetter); ok {
+		s.SetAudioBitrate(q)
+	}
+}
+
 // ResolveTrack validates the URL, searches for tracks, and marks them as resolved.
 // If the search returns partial results with an error (e.g. yt-dlp failed mid-playlist),
 // the tracks are still returned along with the error so the user can use partial results.
